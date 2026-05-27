@@ -1,0 +1,243 @@
+{
+  "entities": {
+    "Match": {
+      "title": "Match",
+      "description": "Details about a football match including streaming links and scores.",
+      "type": "object",
+      "properties": {
+        "homeTeam": { "type": "string" },
+        "awayTeam": { "type": "string" },
+        "homeLogo": { "type": "string" },
+        "awayLogo": { "type": "string" },
+        "homeScore": { "type": "integer" },
+        "awayScore": { "type": "integer" },
+        "status": { "type": "string", "enum": ["LIVE", "UPCOMING", "FINISHED"] },
+        "league": { "type": "string" },
+        "leagueLogo": { "type": "string" },
+        "startTime": { "type": "string", "format": "date-time" },
+        "minute": { "type": "integer" },
+        "streamingLinks": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "label": { "type": "string" },
+              "url": { "type": "string" },
+              "quality": { "type": "string" }
+            }
+          }
+        },
+        "replayLinks": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "label": { "type": "string" },
+              "url": { "type": "string" },
+              "quality": { "type": "string" }
+            }
+          }
+        },
+        "highlightsLinks": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "label": { "type": "string" },
+              "url": { "type": "string" },
+              "quality": { "type": "string" }
+            }
+          }
+        },
+        "commentator": { "type": "string" },
+        "channel": { "type": "string" },
+        "stats": {
+          "type": "object",
+          "properties": {
+            "possession": {
+              "type": "object",
+              "properties": {
+                "home": { "type": "integer" },
+                "away": { "type": "integer" }
+              }
+            },
+            "shots": {
+              "type": "object",
+              "properties": {
+                "home": { "type": "integer" },
+                "away": { "type": "integer" }
+              }
+            },
+            "shotsOnTarget": {
+              "type": "object",
+              "properties": {
+                "home": { "type": "integer" },
+                "away": { "type": "integer" }
+              }
+            },
+            "corners": {
+              "type": "object",
+              "properties": {
+                "home": { "type": "integer" },
+                "away": { "type": "integer" }
+              }
+            },
+            "fouls": {
+              "type": "object",
+              "properties": {
+                "home": { "type": "integer" },
+                "away": { "type": "integer" }
+              }
+            },
+            "yellowCards": {
+              "type": "object",
+              "properties": {
+                "home": { "type": "integer" },
+                "away": { "type": "integer" }
+              }
+            },
+            "redCards": {
+              "type": "object",
+              "properties": {
+                "home": { "type": "integer" },
+                "away": { "type": "integer" }
+              }
+            }
+          }
+        }
+      },
+      "required": ["homeTeam", "awayTeam", "status", "league", "startTime"]
+    },
+    "League": {
+      "title": "League",
+      "description": "Information about a football league.",
+      "type": "object",
+      "properties": {
+        "name": { "type": "string" },
+        "country": { "type": "string" },
+        "logo": { "type": "string" }
+      },
+      "required": ["name"]
+    },
+    "User": {
+      "title": "User",
+      "description": "User profile and preferences.",
+      "type": "object",
+      "properties": {
+        "displayName": { "type": "string" },
+        "email": { "type": "string" },
+        "photoURL": { "type": "string" },
+        "isAdmin": { "type": "boolean" },
+        "favoriteLeagues": { "type": "array", "items": { "type": "string" } },
+        "favoriteTeams": { "type": "array", "items": { "type": "string" } },
+        "notifiedMatches": { "type": "array", "items": { "type": "string" } }
+      }
+    },
+    "News": {
+      "title": "News",
+      "description": "Sports news articles.",
+      "type": "object",
+      "properties": {
+        "title": { "type": "string" },
+        "content": { "type": "string" },
+        "image": { "type": "string" },
+        "category": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "author": { "type": "string" }
+      },
+      "required": ["title", "content", "createdAt"]
+    },
+    "Announcement": {
+      "title": "Announcement",
+      "description": "App-wide notification bar text.",
+      "type": "object",
+      "properties": {
+        "text": { "type": "string" },
+        "active": { "type": "boolean" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["text", "active"]
+    },
+    "FCMToken": {
+      "title": "FCM Token",
+      "description": "Device token for push notifications.",
+      "type": "object",
+      "properties": {
+        "token": { "type": "string" },
+        "userId": { "type": "string" },
+        "device": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["token", "userId", "createdAt"]
+    },
+    "AppSettings": {
+      "title": "App Settings",
+      "description": "Global application configuration",
+      "type": "object",
+      "properties": {
+        "logoUrl": { "type": "string", "description": "Base64 or URL of the site logo" },
+        "iconUrl": { "type": "string", "description": "Base64 or URL of the PWA icon" },
+        "appName": { "type": "string", "description": "Global application title" },
+        "primaryColor": { "type": "string", "description": "Hex theme color" },
+        "adsEnabled": { "type": "boolean", "description": "Toggle to globally enable or disable advertisements" },
+        "adPublisherId": { "type": "string", "description": "Google AdSense Publisher ID (e.g., ca-pub-XXX)" },
+        "admobAppId": { "type": "string", "description": "Google AdMob Application ID (e.g., ca-app-pub-XXX)" }
+      }
+    },
+    "Ad": {
+      "title": "Ad",
+      "description": "Sponsorship banners and custom embed codes.",
+      "type": "object",
+      "properties": {
+        "title": { "type": "string" },
+        "slot": { "type": "string" },
+        "type": { "type": "string", "enum": ["IMAGE", "CODE"] },
+        "code": { "type": "string" },
+        "imageUrl": { "type": "string" },
+        "linkUrl": { "type": "string" },
+        "active": { "type": "boolean" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["title", "slot", "type", "active", "createdAt"]
+    }
+  },
+  "firestore": {
+    "/ads/{adId}": {
+      "schema": "Ad",
+      "description": "Banner and code-based advertisement placements."
+    },
+    "/matches/{matchId}": {
+      "schema": "Match",
+      "description": "Collection of all football matches."
+    },
+    "/leagues/{leagueId}": {
+      "schema": "League",
+      "description": "Collection of supported leagues."
+    },
+    "/users/{userId}": {
+      "schema": "User",
+      "description": "Private user profile data."
+    },
+    "/news/{newsId}": {
+      "schema": "News",
+      "description": "Collection of football news."
+    },
+    "/settings/config": {
+      "schema": "AppSettings",
+      "description": "Global app configuration document"
+    },
+    "/fcm_tokens/{tokenId}": {
+      "schema": "FCMToken",
+      "description": "Store user device tokens for push notifications"
+    },
+    "/admins/{userId}": {
+      "schema": "object",
+      "description": "List of administrative users. Document ID is the user UID."
+    },
+    "/sources/{sourceId}": {
+      "schema": "object",
+      "description": "Configuration for external data sources used by the sync engine."
+    }
+  }
+}

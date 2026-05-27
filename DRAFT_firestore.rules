@@ -1,0 +1,156 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // 0. Default deny
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // --- Helpers ---
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isVerified() {
+      return isSignedIn() && request.auth.token.email_verified == true;
+    }
+
+    function isOwner(userId) {
+      return isSignedIn() && request.auth.uid == userId;
+    }
+
+    function isAdmin() {
+      return isSignedIn() && (
+        exists(/databases/$(database)/documents/admins/$(request.auth.uid)) ||
+        request.auth.token.email == 'abdalziz2022@gmail.com'
+      );
+    }
+
+    function isValidId(id) {
+      return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    function incoming() {
+      return request.resource.data;
+    }
+
+    function existing() {
+      return resource.data;
+    }
+
+    // --- Validation Blueprints ---
+
+    function isValidMatch(data) {
+      return data.homeTeam is string && data.homeTeam.size() > 0 && data.homeTeam.size() <= 100 &&
+             data.awayTeam is string && data.awayTeam.size() > 0 && data.awayTeam.size() <= 100 &&
+             data.status in ['LIVE', 'UPCOMING', 'FINISHED'] &&
+             data.league is string && data.league.size() <= 100 &&
+             data.startTime is string && data.startTime.size() <= 100 &&
+             data.keys().hasAll(['homeTeam', 'awayTeam', 'status', 'league', 'startTime']) &&
+             (!('minute' in data) || data.minute is int) &&
+             (!('stats' in data) || data.stats is map);
+    }
+
+    function isValidUser(data) {
+      return data.displayName is string && data.displayName.size() <= 100 &&
+             data.email is string && data.email.size() <= 100 &&
+             data.email == request.auth.token.email &&
+             (data.photoURL == null || (data.photoURL is string && data.photoURL.size() <= 500)) &&
+             data.isAdmin is bool &&
+             (data.favoriteLeagues == null || (data.favoriteLeagues is list && data.favoriteLeagues.size() <= 20)) &&
+             (data.favoriteTeams == null || (data.favoriteTeams is list && data.favoriteTeams.size() <= 20)) &&
+             (data.notifiedMatches == null || (data.notifiedMatches is list && data.notifiedMatches.size() <= 100)) &&
+             data.keys().hasAll(['displayName', 'email', 'isAdmin']);
+    }
+
+    function isValidFCMToken(data) {
+      return data.token is string && data.token.size() <= 500 &&
+             data.userId is string && data.userId.size() <= 128 &&
+             data.userId == request.auth.uid &&
+             data.createdAt is string && data.createdAt.size() <= 100 &&
+             data.keys().hasAll(['token', 'userId', 'createdAt']);
+    }
+
+    function isValidNews(data) {
+      return data.title is string && data.title.size() <= 200 &&
+             data.content is string && data.content.size() <= 20000 &&
+             data.createdAt is string && data.createdAt.size() <= 100 &&
+             data.keys().hasAll(['title', 'content', 'createdAt']);
+    }
+
+    // --- Collections ---
+
+    // Matches
+    match /matches/{matchId} {
+      allow read: if true;
+      allow create: if isAdmin() && isValidId(matchId) && isValidMatch(incoming());
+      allow update: if isAdmin() && isValidId(matchId) && isValidMatch(incoming()) && (
+        // Any admin can update any match field
+        incoming().diff(existing()).affectedKeys().hasAny(['homeScore', 'awayScore', 'status', 'minute', 'stats', 'streamingLinks'])
+      );
+      allow delete: if isAdmin() && isValidId(matchId);
+    }
+
+    // Leagues
+    match /leagues/{leagueId} {
+      allow read: if true;
+      allow write: if isAdmin() && isValidId(leagueId);
+    }
+
+    // User Profiles
+    match /users/{userId} {
+      allow get: if isSignedIn() && (request.auth.uid == userId || isAdmin());
+      allow list: if isAdmin();
+      
+      allow create: if isVerified() && request.auth.uid == userId && isValidId(userId) && isValidUser(incoming()) && 
+                    (incoming().isAdmin == false || request.auth.token.email == 'abdalziz2022@gmail.com');
+      
+      allow update: if isSignedIn() && isValidId(userId) && (request.auth.uid == userId || isAdmin()) && (
+        // Action: Update Profile (User)
+        (request.auth.uid == userId && !isAdmin() && 
+         incoming().isAdmin == existing().isAdmin &&
+         incoming().email == existing().email &&
+         incoming().diff(existing()).affectedKeys().hasOnly(['displayName', 'photoURL', 'favoriteLeagues', 'favoriteTeams', 'notifiedMatches'])) ||
+        // Action: Admin Edit
+        isAdmin()
+      );
+      
+      allow delete: if isAdmin() && isValidId(userId);
+    }
+
+    // News
+    match /news/{newsId} {
+      allow read: if true;
+      allow create: if isAdmin() && isValidId(newsId) && isValidNews(incoming());
+      allow update: if isAdmin() && isValidId(newsId) && isValidNews(incoming());
+      allow delete: if isAdmin() && isValidId(newsId);
+    }
+
+    // Announcements
+    match /announcements/{id} {
+      allow read: if true;
+      allow write: if isAdmin() && isValidId(id);
+    }
+
+    // Settings
+    match /settings/{configId} {
+      allow read: if true;
+      allow write: if isAdmin() && isValidId(configId);
+    }
+
+    // FCM Tokens
+    match /fcm_tokens/{tokenId} {
+      allow list: if isAdmin();
+      allow create: if isVerified() && isValidId(tokenId) && isValidFCMToken(incoming());
+      allow update: if isVerified() && isValidId(tokenId) && isOwner(existing().userId) && isValidFCMToken(incoming()) && 
+                    incoming().diff(existing()).affectedKeys().hasOnly(['token', 'device', 'updatedAt']);
+      allow delete: if (isOwner(existing().userId) || isAdmin()) && isValidId(tokenId);
+    }
+
+    // Admins List
+    match /admins/{userId} {
+      allow read: if isSignedIn();
+      allow write: if false; 
+    }
+  }
+}
