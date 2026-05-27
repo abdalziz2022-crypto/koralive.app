@@ -7,9 +7,16 @@ import { LogOut, Settings, Bell, Star, Shield, User as UserIcon, Check, Plus, Tr
 import { motion, AnimatePresence } from 'motion/react';
 import { doc, getDoc, setDoc, updateDoc } from 'firebase/firestore';
 import { UserProfile, League, News } from '../types';
-import { mockLeagues } from '../lib/mockData';
 import { cn } from '../lib/utils';
 import { useError } from '../context/ErrorContext';
+
+const POPULAR_LEAGUE_CHOICES = [
+  { id: '307', name: 'الدوري السعودي للمحترفين', logo: 'https://media.api-sports.io/football/leagues/307.png' },
+  { id: '39', name: 'الدوري الإنجليزي الممتاز', logo: 'https://media.api-sports.io/football/leagues/39.png' },
+  { id: '140', name: 'الدوري الإسباني - لاليغا', logo: 'https://media.api-sports.io/football/leagues/140.png' },
+  { id: '135', name: 'الدوري الإيطالي - الدرجة أ', logo: 'https://media.api-sports.io/football/leagues/135.png' },
+  { id: '2', name: 'دوري أبطال أوروبا', logo: 'https://media.api-sports.io/football/leagues/2.png' }
+];
 
 import ThemeSettings from './ThemeSettings';
 import ShareButton from './ShareButton';
@@ -398,7 +405,7 @@ export default function Profile() {
             {saving && <div className="w-4 h-4 border-2 border-primary border-t-transparent rounded-full animate-spin" />}
           </div>
           <div className="grid grid-cols-2 gap-3">
-            {mockLeagues.map(league => {
+            {POPULAR_LEAGUE_CHOICES.map(league => {
               const isFav = profile?.favoriteLeagues.includes(league.name);
               return (
                 <button
@@ -430,12 +437,12 @@ export default function Profile() {
           </div>
           <div className="grid grid-cols-2 gap-3">
             {[
-              { name: 'ريال مدريد', logo: 'https://api.dicebear.com/7.x/initials/svg?seed=RM' },
-              { name: 'برشلونة', logo: 'https://api.dicebear.com/7.x/initials/svg?seed=FCB' },
-              { name: 'الهلال', logo: 'https://api.dicebear.com/7.x/initials/svg?seed=HIL' },
-              { name: 'النصر', logo: 'https://api.dicebear.com/7.x/initials/svg?seed=NAS' },
-              { name: 'ليفربول', logo: 'https://api.dicebear.com/7.x/initials/svg?seed=LIV' },
-              { name: 'مانشستر سيتي', logo: 'https://api.dicebear.com/7.x/initials/svg?seed=MCI' },
+              { name: 'ريال مدريد', logo: 'https://media.api-sports.io/football/teams/541.png' },
+              { name: 'برشلونة', logo: 'https://media.api-sports.io/football/teams/529.png' },
+              { name: 'الهلال', logo: 'https://media.api-sports.io/football/teams/2939.png' },
+              { name: 'النصر', logo: 'https://media.api-sports.io/football/teams/2940.png' },
+              { name: 'ليفربول', logo: 'https://media.api-sports.io/football/teams/40.png' },
+              { name: 'مانشستر سيتي', logo: 'https://media.api-sports.io/football/teams/50.png' },
             ].map(team => {
               const isFav = profile?.favoriteTeams.includes(team.name);
               return (

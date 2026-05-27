@@ -367,7 +367,7 @@ export async function classifySportsArticleWithAI(title: string, description: st
     - اكتب اسم الفئة كما هي تماماً من القائمة، دون أي كلمة إضافية، دون علامات ترقيم، دون شرح.`;
 
     const result = await ai.models.generateContent({
-      model: "gemini-3-flash-preview",
+      model: "gemini-3.5-flash",
       contents: prompt,
     });
     

@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { Clock, X, Layout, Share2, MessageSquare, Newspaper, BookOpen, AArrowUp, AArrowDown, Bookmark, BookmarkCheck } from 'lucide-react';
+import { Clock, X, Layout, Share2, MessageSquare, Newspaper, BookOpen, AArrowUp, AArrowDown, Bookmark, BookmarkCheck, Sun, Eye } from 'lucide-react';
 import { News } from '../types';
 import { formatDate } from '../lib/utils';
 import Markdown from 'react-markdown';
@@ -24,6 +24,8 @@ export default function NewsDetailModal({ news, onClose }: Props) {
   const [readingMode, setReadingMode] = useState(false);
   const [fontSizeLevel, setFontSizeLevel] = useState(2);
   const [readingTheme, setReadingTheme] = useState<'dark' | 'light' | 'sepia' | 'book'>('dark');
+  const [brightness, setBrightness] = useState<number>(100);
+  const [temperature, setTemperature] = useState<number>(0);
   const proseSizes = ['prose-sm', 'prose-base', 'prose-lg', 'prose-xl', 'prose-2xl'];
 
   // Reading Mode Theme styles mapping
@@ -209,70 +211,119 @@ export default function NewsDetailModal({ news, onClose }: Props) {
             <div className={`flex-1 overflow-y-auto news-scroll ${readingMode ? 'p-0 md:p-4' : ''}`}>
               {/* Reading Settings Toolbar - Displays at the very top of content when readingMode is active */}
               {readingMode && (
-                <div className={`mx-6 mt-16 md:mx-10 md:mt-16 p-5 rounded-3xl border ${activeTheme.border} ${activeTheme.container} flex flex-col md:flex-row gap-4 items-center justify-between shadow-md animate-fade-in`}>
-                  {/* Left: Metadata info */}
-                  <div className="flex items-center gap-3 w-full md:w-auto">
-                    <div className="w-10 h-10 rounded-2xl bg-secondary/10 flex items-center justify-center text-primary shrink-0">
-                      <BookOpen className="w-5 h-5" />
-                    </div>
-                    <div>
-                      <h4 className={`text-xs font-black ${activeTheme.text}`}>إعدادات وضع القراءة</h4>
-                      <p className={`text-[10px] ${activeTheme.desc}`}>خصص حجم ونوع وحبر مظهر القراءة المريح لعينيك</p>
-                    </div>
-                  </div>
-
-                  {/* Right Controls: FontSize and Themes */}
-                  <div className="flex items-center gap-4 flex-wrap justify-end w-full md:w-auto">
-                    {/* Size Selector */}
-                    <div className="flex items-center gap-2">
-                      <span className={`text-[10px] font-bold ${activeTheme.desc}`}>حجم الخط:</span>
-                      <div className={`flex items-center border ${activeTheme.border} rounded-xl p-0.5 bg-black/5`}>
-                        <button 
-                          onClick={handleDecreaseFont} 
-                          disabled={fontSizeLevel === 0} 
-                          className={`p-1 w-6 h-6 rounded flex items-center justify-center ${activeTheme.text} hover:bg-black/10 disabled:opacity-30`}
-                          title="تصغير الخط"
-                        >
-                          <AArrowDown size={14} />
-                        </button>
-                        <span className={`text-[10px] font-black px-2 select-none min-w-[50px] text-center ${activeTheme.text}`}>
-                          {fontSizeLevel === 0 ? 'صغير' : fontSizeLevel === 1 ? 'عادي' : fontSizeLevel === 2 ? 'متوسط' : fontSizeLevel === 3 ? 'كبير' : 'ضخم'}
-                        </span>
-                        <button 
-                          onClick={handleIncreaseFont} 
-                          disabled={fontSizeLevel === 4} 
-                          className={`p-1 w-6 h-6 rounded flex items-center justify-center ${activeTheme.text} hover:bg-black/10 disabled:opacity-30`}
-                          title="تكبير الخط"
-                        >
-                          <AArrowUp size={14} />
-                        </button>
+                <div className={`mx-6 mt-16 md:mx-10 md:mt-16 p-5 rounded-3xl border ${activeTheme.border} ${activeTheme.container} flex flex-col gap-5 shadow-md animate-fade-in`}>
+                  {/* Row 1: Left Info & Font Selection */}
+                  <div className="flex flex-col md:flex-row gap-4 items-center justify-between w-full border-b border-dashed border-zinc-700/20 pb-4">
+                    {/* Left: Metadata info */}
+                    <div className="flex items-center gap-3 w-full md:w-auto">
+                      <div className="w-10 h-10 rounded-2xl bg-secondary/10 flex items-center justify-center text-primary shrink-0 animate-pulse">
+                        <BookOpen className="w-5 h-5" />
+                      </div>
+                      <div>
+                        <h4 className={`text-xs font-black ${activeTheme.text}`}>إعدادات وضع القراءة</h4>
+                        <p className={`text-[10px] ${activeTheme.desc}`}>خصص حجم ونوع وحبر مظهر القراءة المريح لعينيك</p>
                       </div>
                     </div>
 
-                    {/* Color Presets */}
-                    <div className="flex items-center gap-2">
-                      <span className={`text-[10px] font-bold ${activeTheme.desc}`}>سمة الورق:</span>
-                      <div className={`flex items-center gap-1.5 border ${activeTheme.border} rounded-xl p-1 bg-black/5`}>
-                        <button
-                          onClick={() => setReadingTheme('dark')}
-                          className={`w-5 h-5 rounded-lg bg-[#0f0f11] border transition-all ${readingTheme === 'dark' ? 'border-primary ring-2 ring-primary/20 scale-110' : 'border-zinc-700 hover:scale-105'}`}
-                          title="الوضع المظلم البارد"
-                        />
-                        <button
-                          onClick={() => setReadingTheme('book')}
-                          className={`w-5 h-5 rounded-lg bg-[#0e1726] border transition-all ${readingTheme === 'book' ? 'border-primary ring-2 ring-primary/20 scale-110' : 'border-slate-700 hover:scale-105'}`}
-                          title="الحبر المسائي الهادئ"
-                        />
-                        <button
-                          onClick={() => setReadingTheme('sepia')}
-                          className={`w-5 h-5 rounded-lg bg-[#fbf0db] border transition-all ${readingTheme === 'sepia' ? 'border-primary ring-2 ring-primary/20 scale-110' : 'border-amber-700/30 hover:scale-105'}`}
-                          title="الورق الدافئ (سيبيا)"
-                        />
-                        <button
-                          onClick={() => setReadingTheme('light')}
-                          className={`w-5 h-5 rounded-lg bg-[#f4f4f5] border transition-all ${readingTheme === 'light' ? 'border-primary ring-2 ring-primary/20 scale-110' : 'border-zinc-400 hover:scale-105'}`}
-                          title="الورق الفاتح"
-                        />
+                    {/* Right Controls: FontSize and Themes */}
+                    <div className="flex items-center gap-4 flex-wrap justify-end w-full md:w-auto">
+                      {/* Size Selector */}
+                      <div className="flex items-center gap-2">
+                        <span className={`text-[10px] font-bold ${activeTheme.desc}`}>حجم الخط:</span>
+                        <div className={`flex items-center border ${activeTheme.border} rounded-xl p-0.5 bg-black/5`}>
+                          <button 
+                            onClick={handleDecreaseFont} 
+                            disabled={fontSizeLevel === 0} 
+                            className={`p-1 w-6 h-6 rounded flex items-center justify-center ${activeTheme.text} hover:bg-black/10 disabled:opacity-30`}
+                            title="تصغير الخط"
+                          >
+                            <AArrowDown size={14} />
+                          </button>
+                          <span className={`text-[10px] font-black px-2 select-none min-w-[50px] text-center ${activeTheme.text}`}>
+                            {fontSizeLevel === 0 ? 'صغير' : fontSizeLevel === 1 ? 'عادي' : fontSizeLevel === 2 ? 'متوسط' : fontSizeLevel === 3 ? 'كبير' : 'ضخم'}
+                          </span>
+                          <button 
+                            onClick={handleIncreaseFont} 
+                            disabled={fontSizeLevel === 4} 
+                            className={`p-1 w-6 h-6 rounded flex items-center justify-center ${activeTheme.text} hover:bg-black/10 disabled:opacity-30`}
+                            title="تكبير الخط"
+                          >
+                            <AArrowUp size={14} />
+                          </button>
+                        </div>
+                      </div>
+
+                      {/* Color Presets */}
+                      <div className="flex items-center gap-2">
+                        <span className={`text-[10px] font-bold ${activeTheme.desc}`}>سمة الورق:</span>
+                        <div className={`flex items-center gap-1.5 border ${activeTheme.border} rounded-xl p-1 bg-black/5`}>
+                          <button
+                            onClick={() => setReadingTheme('dark')}
+                            className={`w-5 h-5 rounded-lg bg-[#0f0f11] border transition-all ${readingTheme === 'dark' ? 'border-primary ring-2 ring-primary/20 scale-110' : 'border-zinc-700 hover:scale-105'}`}
+                            title="الوضع المظلم البارد"
+                          />
+                          <button
+                            onClick={() => setReadingTheme('book')}
+                            className={`w-5 h-5 rounded-lg bg-[#0e1726] border transition-all ${readingTheme === 'book' ? 'border-primary ring-2 ring-primary/20 scale-110' : 'border-slate-700 hover:scale-105'}`}
+                            title="الحبر المسائي الهادئ"
+                          />
+                          <button
+                            onClick={() => setReadingTheme('sepia')}
+                            className={`w-5 h-5 rounded-lg bg-[#fbf0db] border transition-all ${readingTheme === 'sepia' ? 'border-primary ring-2 ring-primary/20 scale-110' : 'border-amber-700/30 hover:scale-105'}`}
+                            title="الورق الدافئ (سيبيا)"
+                          />
+                          <button
+                            onClick={() => setReadingTheme('light')}
+                            className={`w-5 h-5 rounded-lg bg-[#f4f4f5] border transition-all ${readingTheme === 'light' ? 'border-primary ring-2 ring-primary/20 scale-110' : 'border-zinc-400 hover:scale-105'}`}
+                            title="الورق الفاتح"
+                          />
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Row 2: Cozy Night mode (Brightness & Sepia/Temperature Warmth) */}
+                  <div className="flex flex-col sm:flex-row gap-6 items-center justify-between w-full">
+                    <div className="flex items-center gap-2 text-right w-full sm:w-auto shrink-0">
+                      <Eye className="w-4 h-4 text-emerald-500 animate-pulse" />
+                      <span className={`text-xs font-black ${activeTheme.text}`}>الوضع الليلي المريح ودرجة حرارة اللون:</span>
+                    </div>
+
+                    <div className="flex flex-wrap items-center gap-6 w-full sm:w-auto justify-end">
+                      {/* Brightness Adjustment */}
+                      <div className="flex items-center gap-2.5">
+                        <Sun className={`w-3.5 h-3.5 ${activeTheme.text}`} />
+                        <span className={`text-[10px] font-bold ${activeTheme.desc}`}>سطوع النص:</span>
+                        <div className="flex items-center gap-2">
+                          <input 
+                            type="range" 
+                            min="50" 
+                            max="100" 
+                            step="5"
+                            value={brightness}
+                            onChange={(e) => setBrightness(Number(e.target.value))}
+                            className="w-24 md:w-32 h-1.5 rounded-lg appearance-none cursor-pointer accent-emerald-500 bg-zinc-800"
+                          />
+                          <span className={`text-[10px] font-mono font-bold min-w-[28px] ${activeTheme.text}`}>{brightness}%</span>
+                        </div>
+                      </div>
+
+                      {/* Sepia (Color Heat) Adjustment */}
+                      <div className="flex items-center gap-2.5">
+                        <Eye className={`w-3.5 h-3.5 text-amber-500`} />
+                        <span className={`text-[10px] font-bold ${activeTheme.desc}`}>حرارة اللون (سيبيا):</span>
+                        <div className="flex items-center gap-2">
+                          <input 
+                            type="range" 
+                            min="0" 
+                            max="100" 
+                            step="5"
+                            value={temperature}
+                            onChange={(e) => setTemperature(Number(e.target.value))}
+                            className="w-24 md:w-32 h-1.5 rounded-lg appearance-none cursor-pointer accent-amber-500 bg-zinc-800"
+                          />
+                          <span className={`text-[10px] font-mono font-bold min-w-[28px] ${activeTheme.text}`}>{temperature}%</span>
+                        </div>
                       </div>
                     </div>
                   </div>
@@ -306,7 +357,13 @@ export default function NewsDetailModal({ news, onClose }: Props) {
 
               <div className={`p-6 md:p-10 ${readingMode ? 'max-w-3xl mx-auto' : 'grid grid-cols-1 lg:grid-cols-3 gap-10'}`}>
                 <div className={`${readingMode ? 'w-full' : 'lg:col-span-2'} space-y-8`}>
-                  <div className={`prose ${readingMode ? activeTheme.prose : 'prose prose-invert prose-primary'} ${proseSizes[fontSizeLevel]} max-w-none prose-img:rounded-2xl prose-headings:font-black prose-a:text-primary transition-all duration-300`}>
+                  <div 
+                    className={`prose ${readingMode ? activeTheme.prose : 'prose prose-invert prose-primary'} ${proseSizes[fontSizeLevel]} max-w-none prose-img:rounded-2xl prose-headings:font-black prose-a:text-primary transition-all duration-300`}
+                    style={{
+                      opacity: readingMode ? (brightness / 100) : 1,
+                      filter: readingMode ? `sepia(${temperature}%)` : 'none',
+                    }}
+                  >
                     <Markdown>{news.content || 'لا تتوفر تفاصيل إضافية لهذا الخبر. يرجى زيارة الرابط الأصلي للحصول على القصة الكاملة.'}</Markdown>
                   </div>
 

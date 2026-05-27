@@ -280,6 +280,80 @@ app.get("/api/football-data/*", async (req, res) => {
 
   const sendFallbackResponse = () => {
     const fallbackList = getFallbackMatches();
+    
+    if (cleanSubPath.includes("standings")) {
+      return res.json({
+        standings: [
+          {
+            stage: "REGULAR_SEASON",
+            type: "TOTAL",
+            table: [
+              {
+                position: 1,
+                team: { id: 86, name: "ريال مدريد", crest: "https://crests.thesportsdb.com/images/media/team/badge/7v99p01602012028.png" },
+                playedGames: 30,
+                won: 22,
+                draw: 6,
+                lost: 2,
+                points: 72,
+                goalsFor: 64,
+                goalsAgainst: 20,
+                goalDifference: 44
+              },
+              {
+                position: 2,
+                team: { id: 81, name: "برشلونة", crest: "https://crests.thesportsdb.com/images/media/team/badge/v48u831602008272.png" },
+                playedGames: 30,
+                won: 20,
+                draw: 7,
+                lost: 3,
+                points: 67,
+                goalsFor: 60,
+                goalsAgainst: 26,
+                goalDifference: 34
+              },
+              {
+                position: 3,
+                team: { id: 2939, name: "الهلال", crest: "https://media.api-sports.io/football/teams/2939.png" },
+                playedGames: 30,
+                won: 19,
+                draw: 8,
+                lost: 3,
+                points: 65,
+                goalsFor: 58,
+                goalsAgainst: 28,
+                goalDifference: 30
+              }
+            ]
+          }
+        ]
+      });
+    }
+
+    if (cleanSubPath.includes("teams/")) {
+      return res.json({
+        id: 86,
+        name: "ريال مدريد",
+        shortName: "الريال",
+        tla: "RMA",
+        crest: "https://crests.thesportsdb.com/images/media/team/badge/7v99p01602012028.png",
+        website: "https://www.realmadrid.com",
+        founded: 1902,
+        clubColors: "White / Blue",
+        venue: "Estadio Santiago Bernabéu"
+      });
+    }
+
+    if (cleanSubPath.includes("competitions") && !cleanSubPath.includes("matches")) {
+      return res.json({
+        competitions: [
+          { id: 2021, name: "الدوري الإنجليزي الممتاز", code: "PL", emblem: "https://crests.thesportsdb.com/images/media/league/badge/pwtgq11421114674.png" },
+          { id: 2014, name: "الدوري الإسباني - لاليغا", code: "PD", emblem: "https://crests.thesportsdb.com/images/media/league/badge/wtvrmu1421114241.png" },
+          { id: 2001, name: "دوري أبطال أوروبا", code: "CL", emblem: "https://crests.thesportsdb.com/images/media/league/badge/wtvrmu1421114241.png" }
+        ]
+      });
+    }
+
     const matchIdMatch = cleanSubPath.match(/^matches\/(\d+)/);
     if (matchIdMatch) {
       const matchId = parseInt(matchIdMatch[1], 10);
@@ -423,7 +497,7 @@ app.post("/api/matches/stats", async (req, res) => {
     Output only the JSON.`;
 
     const result = await ai.models.generateContent({
-      model: "gemini-3-flash-preview",
+      model: "gemini-3.5-flash",
       contents: prompt,
       config: {
         tools: [{ googleSearch: {} }],
@@ -464,7 +538,7 @@ app.post("/api/predict/match", async (req, res) => {
     Be very concise and use Arabic.`;
 
     const result = await ai.models.generateContent({
-      model: "gemini-3-flash-preview",
+      model: "gemini-3.5-flash",
       contents: prompt,
     });
 
@@ -609,7 +683,7 @@ async function syncSportsDataWithAI(target: 'MATCHES' | 'NEWS' | 'BOTH' = 'BOTH'
       `;
 
         const matchResult = await ai.models.generateContent({
-          model: "gemini-3-flash-preview",
+          model: "gemini-3.5-flash",
           contents: matchPrompt,
           config: {
             tools: [{ googleSearch: {} }]
@@ -693,7 +767,7 @@ async function syncSportsDataWithAI(target: 'MATCHES' | 'NEWS' | 'BOTH' = 'BOTH'
     `;
 
       const newsResult = await ai.models.generateContent({
-        model: "gemini-3-flash-preview",
+        model: "gemini-3.5-flash",
         contents: newsPrompt,
         config: {
           tools: [{ googleSearch: {} }]

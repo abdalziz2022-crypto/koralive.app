@@ -1,567 +1,526 @@
 import React, { useState, useMemo } from 'react';
-import { useMatches } from '../context/MatchContext';
-import { useAuthState } from 'react-firebase-hooks/auth';
-import { auth, db } from '../firebase';
-import { doc, getDoc } from 'firebase/firestore';
 import { motion, AnimatePresence } from 'motion/react';
+import { Link, useNavigate } from 'react-router-dom';
 import { 
   Radio, 
   CalendarDays, 
-  CheckCircle2, 
   Trophy, 
-  AlertTriangle, 
-  RefreshCw, 
-  Search, 
   Flame, 
-  Award, 
-  Star,
-  Zap,
-  ChevronLeft,
-  Tv,
-  Users,
-  Bell,
+  Tv, 
+  Zap, 
+  ChevronLeft, 
+  Star, 
+  Bell, 
+  Search, 
+  Share2, 
+  Clock, 
+  Compass, 
+  Bookmark, 
+  Activity, 
   Sparkles,
-  Bookmark,
-  Share2
+  ShieldAlert,
+  AlertTriangle 
 } from 'lucide-react';
-import { Link } from 'react-router-dom';
+
+import { getActiveApiKey } from '../api/apiClient';
+
+// Hooks & Services
+import { 
+  useLiveMatches, 
+  useFixtures, 
+  useLeagues, 
+  useNews 
+} from '../hooks/useFootballApi';
+import { useAuthState } from 'react-firebase-hooks/auth';
+import { auth, db } from '../firebase';
+import { doc, onSnapshot, updateDoc } from 'firebase/firestore';
 
 // Components
 import HomeHeader from '../components/home/HomeHeader';
-import SectionTitle from '../components/home/SectionTitle';
-import HorizontalLeagueList from '../components/home/HorizontalLeagueList';
-import LeagueSection from '../components/home/LeagueSection';
 import MatchCard from '../components/MatchCard';
-import BreakingNews from '../components/BreakingNews';
-import ShareButton from '../components/ShareButton';
 import AdBanner from '../components/AdBanner';
+import ShareButton from '../components/ShareButton';
 
 export default function HomePage() {
-  const { matches, leagues, loading: matchesLoading, liveMatches } = useMatches();
+  const navigate = useNavigate();
   const [user] = useAuthState(auth);
-  const [selectedLeague, setSelectedLeague] = useState(null);
-  const [searchQuery, setSearchQuery] = useState('');
-  const [profile, setProfile] = useState(null);
+  
+  // Real-time API query feeds (Sprint 4 data-first foundation)
+  const { data: qLiveMatches, isLoading: liveLoading, isError: liveError } = useLiveMatches();
+  const { data: qFixtures, isLoading: fixturesLoading } = useFixtures({
+    date: new Date().toISOString().split('T')[0]
+  });
+  const { data: qLeagues, isLoading: leaguesLoading } = useLeagues();
+  const { data: newsPayload, isLoading: newsLoading } = useNews({ limit: 6 });
 
+  // Favorites logic from firebase profile
+  const [profile, setProfile] = useState(null);
   React.useEffect(() => {
     if (user) {
-      const fetchProfile = async () => {
-        try {
-          const docRef = doc(db, 'users', user.uid);
-          const docSnap = await getDoc(docRef);
-          if (docSnap.exists()) {
-            setProfile(docSnap.data());
-          }
-        } catch (e) {
-          console.error("Error reading profile:", e);
+      const docRef = doc(db, 'users', user.uid);
+      const unsub = onSnapshot(docRef, (snapshot) => {
+        if (snapshot.exists()) {
+          setProfile(snapshot.data());
         }
-      };
-      fetchProfile();
+      });
+      return () => unsub();
     } else {
       setProfile(null);
     }
   }, [user]);
 
+  const favoriteLeagues = profile?.favoriteLeagues || [];
+  const favoriteTeams = profile?.favoriteTeams || [];
+
   const isFavorite = (match) => {
-    if (!profile) return false;
-    const favoriteLeagues = profile.favoriteLeagues || [];
-    const favoriteTeams = profile.favoriteTeams || [];
-    return (
-      favoriteLeagues.includes(match.league) ||
-      favoriteTeams.includes(match.homeTeam) ||
-      favoriteTeams.includes(match.awayTeam)
-    );
-  };
-
-  const sortMatches = (matchesList) => {
-    return [...matchesList].sort((a, b) => {
-      const aFav = isFavorite(a);
-      const bFav = isFavorite(b);
-      if (aFav && !bFav) return -1;
-      if (!aFav && bFav) return 1;
-      return 0;
-    });
-  };
-
-  const filteredMatches = useMemo(() => {
-    let result = matches || [];
+    const lName = typeof match.league === 'object' ? match.league?.name : match.league;
+    const hTeamName = typeof match.homeTeam === 'object' ? match.homeTeam?.name : match.homeTeam;
+    const aTeamName = typeof match.awayTeam === 'object' ? match.awayTeam?.name : match.awayTeam;
     
-    if (selectedLeague) {
-      if (selectedLeague === 'دوري الأبطال') {
-        result = result.filter(m => m.league === 'دوري الأبطال' || m.league === 'دوري أبطال أوروبا');
-      } else {
-        result = result.filter(m => m.league === selectedLeague);
-      }
-    }
-
-    if (searchQuery.trim() !== '') {
-      const query = searchQuery.toLowerCase();
-      result = result.filter(m => 
-        m.homeTeam.toLowerCase().includes(query) ||
-        m.awayTeam.toLowerCase().includes(query) ||
-        m.league.toLowerCase().includes(query) ||
-        (m.commentator && m.commentator.toLowerCase().includes(query))
-      );
-    }
-
-    return result;
-  }, [matches, selectedLeague, searchQuery]);
-
-  const liveMatchesList = useMemo(() => {
-    const list = filteredMatches.filter(m => m.status === 'LIVE');
-    return sortMatches(list);
-  }, [filteredMatches, profile]);
-
-  const todayMatchesList = useMemo(() => {
-    const list = filteredMatches.filter(m => m.status === 'UPCOMING' || m.status === 'LIVE');
-    return sortMatches(list);
-  }, [filteredMatches, profile]);
-
-  const finishedMatchesList = useMemo(() => {
-    const list = filteredMatches.filter(m => m.status === 'FINISHED');
-    return sortMatches(list);
-  }, [filteredMatches, profile]);
-
-  const groupMatchesByCompetition = (matchesList) => {
-    return matchesList.reduce((acc, m) => {
-      const found = acc.find(item => item.leagueName === m.league);
-      if (found) {
-        found.matches.push(m);
-      } else {
-        acc.push({
-          leagueName: m.league,
-          leagueLogo: m.leagueLogo,
-          matches: [m]
-        });
-      }
-      return acc;
-    }, []);
+    return (
+      favoriteLeagues.includes(lName) ||
+      favoriteTeams.includes(hTeamName) ||
+      favoriteTeams.includes(aTeamName)
+    );
   };
 
-  const groupedTodayLeagues = useMemo(() => {
-    return groupMatchesByCompetition(todayMatchesList);
-  }, [todayMatchesList]);
+  // 1. Live and today matches extraction & formatting
+  const liveMatches = useMemo(() => {
+    return Array.isArray(qLiveMatches) ? qLiveMatches : [];
+  }, [qLiveMatches]);
 
-  const groupedFinishedLeagues = useMemo(() => {
-    return groupMatchesByCompetition(finishedMatchesList);
-  }, [finishedMatchesList]);
+  const todayMatches = useMemo(() => {
+    return Array.isArray(qFixtures) ? qFixtures : [];
+  }, [qFixtures]);
 
-  // Premium Hot/Live Hero Matches (Top Slider Feature)
-  const heroMatches = useMemo(() => {
-    if (liveMatchesList.length > 0) return liveMatchesList.slice(0, 3);
-    return todayMatchesList.slice(0, 3);
-  }, [liveMatchesList, todayMatchesList]);
+  const leaguesList = useMemo(() => {
+    return Array.isArray(qLeagues) ? qLeagues : [];
+  }, [qLeagues]);
 
-  if (matchesLoading) {
-    return (
-      <div className="min-h-screen bg-background text-[color:var(--color-text)] pb-24" style={{ direction: 'rtl' }}>
-        <HomeHeader />
-        <div className="max-w-7xl mx-auto px-4 pt-6 space-y-10 animate-pulse">
-          {/* Slider Skeleton */}
-          <div className="h-56 bg-surface/50 rounded-[28px] border border-border/40" />
-          
-          {/* Quick Filter Skeleton */}
-          <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-            {[1, 2, 3, 4].map(i => (
-              <div key={i} className="h-16 bg-surface/40 rounded-2xl border border-border/30" />
-            ))}
-          </div>
+  const newsArticles = useMemo(() => {
+    if (newsPayload && Array.isArray(newsPayload)) return newsPayload.slice(0, 5);
+    if (newsPayload && newsPayload.data && Array.isArray(newsPayload.data)) {
+      return newsPayload.data.slice(0, 5);
+    }
+    return [];
+  }, [newsPayload]);
 
-          {/* Matches skeleton */}
-          <div className="space-y-4">
-            <div className="h-6 w-40 bg-surface/80 rounded-md" />
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-              {[1, 2, 3].map(i => (
-                <div key={i} className="h-44 bg-surface/30 rounded-2xl border border-border/30" />
-              ))}
-            </div>
-          </div>
-        </div>
-      </div>
-    );
-  }
+  // Select "Match of the Day" / Premium Hero Match
+  const heroMatch = useMemo(() => {
+    if (liveMatches.length > 0) return liveMatches[0];
+    if (todayMatches.length > 0) {
+      // Prefer upcoming matches of major teams or first match
+      return todayMatches[0];
+    }
+    return null;
+  }, [liveMatches, todayMatches]);
 
-  const hasError = !matches || matches.length === 0;
+  // Trending Match algorithm (matches featuring top clubs or live)
+  const trendingMatches = useMemo(() => {
+    const list = [...todayMatches];
+    const topClubs = ['الهلال', 'النصر', 'الاتحاد', 'الاهلي', 'برشلونة', 'ريال مدريد', 'ليفربول', 'مانشستر', 'أرسنال', 'بايرن'];
+    
+    return list.filter(m => {
+      if (m.id === heroMatch?.id) return false;
+      const hName = typeof m.homeTeam === 'object' ? m.homeTeam?.name : m.homeTeam;
+      const aName = typeof m.awayTeam === 'object' ? m.awayTeam?.name : m.awayTeam;
+      return topClubs.some(club => hName?.includes(club) || aName?.includes(club));
+    }).slice(0, 3);
+  }, [todayMatches, heroMatch]);
+
+  const formattedStartTime = (timeString) => {
+    if (!timeString) return '';
+    try {
+      return new Date(timeString).toLocaleTimeString('ar-SA', {
+        hour: '2-digit',
+        minute: '2-digit'
+      });
+    } catch (_) {
+      return '';
+    }
+  };
 
   return (
-    <div className="min-h-screen bg-background text-[color:var(--color-text)] transition-colors duration-300 pb-28 md:pb-12 selection:bg-primary/30 selection:text-primary">
-      {/* Sticky top bar Header */}
+    <div 
+      className="min-h-screen bg-[#070c16] text-gray-100 pb-28 pt-0 px-0 transition-colors duration-300 select-none overflow-x-hidden font-sans" 
+      style={{ direction: 'rtl' }}
+    >
+      {/* Dynamic Header with Live Actions */}
       <HomeHeader />
 
-      {/* Main Container */}
-      <main className="max-w-7xl mx-auto px-4 pt-4 md:pt-6 space-y-8">
-        
-        {/* PHASE 4: Hero Live Match Slider (Premium Sports Theme) */}
-        {heroMatches.length > 0 && (
-          <section className="relative overflow-hidden rounded-[28px] border border-primary/20 bg-gradient-to-br from-surface via-surface to-primary/5 p-6 md:p-8 shadow-2xl" style={{ direction: 'rtl' }}>
-            <div className="absolute top-0 left-0 lg:left-6 lg:top-6 flex items-center gap-1.5 bg-red-500 text-white text-[10px] font-black px-3 py-1.5 rounded-full select-none shadow animate-pulse">
-              <span className="w-1.5 h-1.5 rounded-full bg-white inline-block"></span>
-              <span>مباريات القمة الآن</span>
+      <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 space-y-10 pt-6">
+
+        {/* Diagnostic Alert for API errors or empty keys */}
+        {(!getActiveApiKey() || liveError) && (
+          <motion.div 
+            initial={{ opacity: 0, y: -10 }} 
+            animate={{ opacity: 1, y: 0 }}
+            className="rounded-2xl border border-red-500/15 bg-red-950/15 p-5 flex flex-col sm:flex-row items-center justify-between gap-4"
+          >
+            <div className="flex items-start gap-3 text-right">
+              <ShieldAlert className="text-red-400 shrink-0 mt-0.5" size={20} />
+              <div>
+                <h4 className="text-xs font-black text-red-200">
+                  {liveError ? 'فشل جلب البيانات الحقيقية من الموفر المباشر' : 'تنبيه: لا يوجد مفتاح ربط API-Football حقيقي نشط'}
+                </h4>
+                <p className="text-[11px] text-red-300/80 mt-1 leading-relaxed">
+                  {liveError 
+                    ? 'تعذر الوصول للمزود بسبب نفاذ الحصة أو حد الـ Rate Limit لطلب البيانات الحية.' 
+                    : 'التطبيق مهيأ في وضع الأمان لمنع أي محتوى افتراضي أو مباريات مصطنعة.'}
+                  {' يرجى إدخال مفتاح API-Football الخاص بك لتأكيد الاتصال والمطابقة.'}
+                </p>
+              </div>
+            </div>
+            <button
+              onClick={() => navigate('/football-debug')}
+              className="bg-red-500/15 hover:bg-red-500/25 text-red-300 border border-red-500/30 font-black text-xs px-4.5 py-2 rounded-xl transition-all cursor-pointer whitespace-nowrap"
+            >
+              شاشة التدقيق والمفاتيح
+            </button>
+          </motion.div>
+        )}
+
+        {/* 1. SHORTCUTS / QUICK ACTIONS */}
+        <section className="animate-fade-in">
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+            {[
+              { label: 'المباريات المباشرة', desc: 'بث حي الآن', icon: Radio, onClick: () => navigate('/schedule?tab=LIVE'), color: 'from-rose-500/20 to-red-600/5 text-rose-400 border-rose-500/20' },
+              { label: 'أخبار كورة لايف', desc: 'تغطية عالمية حية', icon: Compass, onClick: () => navigate('/news'), color: 'from-cyan-500/20 to-blue-600/5 text-cyan-400 border-cyan-500/20' },
+              { label: 'البطولات الكبرى', desc: 'الترتيب والنتائج', icon: Trophy, onClick: () => navigate('/leagues'), color: 'from-amber-500/20 to-yellow-600/5 text-amber-400 border-amber-500/20' },
+              { label: 'مفضلتي الرياضية', desc: 'تنبيهات فورية', icon: Star, onClick: () => navigate('/profile'), color: 'from-emerald-500/20 to-teal-600/5 text-emerald-400 border-emerald-500/20' },
+            ].map((act, idx) => (
+              <motion.button
+                key={act.label}
+                whileHover={{ y: -3, scale: 1.02 }}
+                whileTap={{ scale: 0.98 }}
+                onClick={act.onClick}
+                className={`p-4 rounded-2xl bg-gradient-to-br ${act.color} border text-right transition-all flex items-center justify-between cursor-pointer`}
+              >
+                <div className="space-y-1">
+                  <span className="block text-xs font-black text-white">{act.label}</span>
+                  <span className="block text-[10px] opacity-65 font-bold">{act.desc}</span>
+                </div>
+                <div className="p-2.5 rounded-xl bg-white/5">
+                  <act.icon size={18} />
+                </div>
+              </motion.button>
+            ))}
+          </div>
+        </section>
+
+        {/* 2. PREMIUM HERO LIVE/MATCH OF THE DAY */}
+        {heroMatch && (
+          <section className="relative overflow-hidden rounded-[24px] border border-white/5 bg-gradient-to-br from-slate-900/60 via-slate-900/95 to-slate-950/90 p-5 md:p-8 shadow-2xl">
+            {/* Ambient glowing blobs in background */}
+            <div className="absolute right-0 top-0 w-48 h-48 bg-primary/5 rounded-full filter blur-3xl pointer-events-none" />
+            <div className="absolute left-10 bottom-0 w-32 h-32 bg-secondary/5 rounded-full filter blur-3xl pointer-events-none" />
+
+            {/* Premium Status Badge */}
+            <div className="absolute top-4 left-4 z-10 flex items-center gap-1.5 bg-red-500/15 text-red-400 text-[10px] font-black px-3.5 py-1.5 rounded-full border border-red-500/20 animate-pulse">
+              <span className="w-1.5 h-1.5 rounded-full bg-red-500 inline-block"></span>
+              <span>مباراة القمة الحالية</span>
             </div>
 
-            <div className="flex flex-col lg:flex-row items-center justify-between gap-6 relative z-10 pt-4 lg:pt-0">
-              {/* Event Details and Live Status */}
-              <div className="text-right space-y-4 max-w-lg lg:order-1 order-2">
+            <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-center pt-8 lg:pt-0">
+              {/* Info Column */}
+              <div className="lg:col-span-7 space-y-4 text-right">
                 <div className="flex items-center gap-2">
-                  <span className="bg-primary/10 text-primary border border-primary/20 text-[10px] font-black tracking-wider uppercase px-2.5 py-1 rounded-md">
-                    {heroMatches[0].league} 🏆
+                  <span className="bg-primary/10 text-primary border border-primary/20 text-[9px] font-black tracking-wider uppercase px-2.5 py-1 rounded-md">
+                    {typeof heroMatch.league === 'object' ? heroMatch.league?.name : heroMatch.league} 🏆
                   </span>
-                  <span className="text-xs text-slate-400 font-bold flex items-center gap-1">
-                    <Tv size={13} className="text-primary" />
-                    {heroMatches[0].channel || 'قناة SSC الرياضية HD'}
+                  <span className="text-[10px] text-gray-400 font-bold flex items-center gap-1">
+                    <Tv size={12} className="text-primary" />
+                     SSC الرياضية HD (معلق حي)
                   </span>
                 </div>
 
-                <h2 className="text-2xl md:text-3xl font-black text-white leading-tight">
-                  كلاسيكو الأحلام الحاسم والترشيحات الرياضية الحية التفاعلية
+                <h2 className="text-xl md:text-2xl font-black text-white leading-tight">
+                  {typeof heroMatch.homeTeam === 'object' ? heroMatch.homeTeam?.name : heroMatch.homeTeam} ضد {typeof heroMatch.awayTeam === 'object' ? heroMatch.awayTeam?.name : heroMatch.awayTeam}
                 </h2>
-                <p className="text-xs text-slate-400 font-bold leading-normal">
-                  تابع استوديو البث الحصري والتحليل التفاعلي مع أقوى سيرفرات البث المتنوعة لتفادي التقطيع في المباريات الكبيرة المصيرية.
+                <p className="text-xs text-slate-400 font-bold leading-relaxed max-w-xl">
+                  تغطية تحليلية ممتازة لقمة الكرة الحالية. شاهد التشكيل الأساسي، إحصاءات الاستحواذ الدقيقة ومراكز اللاعبين لحظة بلحظة وبدقة عالية.
                 </p>
 
-                <div className="flex flex-wrap gap-3 pt-2">
+                <div className="flex flex-wrap gap-2.5 pt-2">
                   <Link 
-                    to={`/match/${heroMatches[0].id}`}
-                    className="flex items-center gap-2 bg-primary text-black hover:bg-primary/90 px-6 py-3 rounded-full text-xs font-black transition-all shadow-lg active:scale-95 cursor-pointer"
+                    to={`/match/${heroMatch.id}`}
+                    className="flex items-center gap-2 bg-primary text-black hover:bg-primary/90 px-6 py-2.5 rounded-full text-xs font-black transition-all shadow-lg active:scale-95 duration-200"
                   >
-                    <Zap size={14} className="fill-current" />
-                    <span>شاهد البث المباشر فوراً</span>
+                    <Zap size={13} className="fill-current" />
+                    <span>شاهد التحليل والبث المباشر</span>
                   </Link>
-                  <button 
-                    onClick={() => {
-                      const shareText = `شاهد مباراة ${heroMatches[0].homeTeam} ضد ${heroMatches[0].awayTeam} الآن بث مباشر وبدون تقطيع على كورة 90!`;
-                      if (navigator.share) {
-                        navigator.share({ text: shareText, url: window.location.href });
-                      }
-                    }}
-                    className="flex items-center gap-1.5 bg-white/5 hover:bg-white/10 text-white border border-border px-5 py-3 rounded-full text-xs font-bold transition-all"
-                  >
-                    <Share2 size={13} />
-                    <span>مشاركة البث</span>
-                  </button>
+                  <ShareButton variant="dropdown" text={`شاهد مباراة ${typeof heroMatch.homeTeam === 'object' ? heroMatch.homeTeam?.name : heroMatch.homeTeam} ضد ${typeof heroMatch.awayTeam === 'object' ? heroMatch.awayTeam?.name : heroMatch.awayTeam} الآن بث مباشر على كورة لايف!`} />
                 </div>
               </div>
 
-              {/* Live Match Mini-Scoreboard */}
-              <div className="lg:order-2 order-1 w-full lg:w-96 bg-black/45 backdrop-blur-xl border border-white/5 rounded-2xl p-5 shadow-inner">
-                <div className="flex items-center justify-between">
-                  <div className="flex flex-col items-center space-y-2">
-                    <img 
-                      src={heroMatches[0].homeLogo} 
-                      alt={heroMatches[0].homeTeam} 
-                      className="w-12 h-12 object-contain filter drop-shadow" 
-                      referrerPolicy="no-referrer"
-                    />
-                    <span className="text-xs font-black text-white text-center truncate w-24">
-                      {heroMatches[0].homeTeam}
-                    </span>
-                  </div>
+              {/* Graphical Scoreboard Score Card */}
+              <div className="lg:col-span-5 w-full bg-black/35 backdrop-blur-md border border-white/5 rounded-2xl p-6 shadow-inner flex items-center justify-between">
+                {/* Home Team */}
+                <div className="flex flex-col items-center space-y-2.5 flex-1">
+                  <img 
+                    src={heroMatch.homeLogo || (typeof heroMatch.homeTeam === 'object' && heroMatch.homeTeam?.logo)} 
+                    alt="" 
+                    className="w-14 h-14 object-contain filter drop-shadow hover:scale-105 transition-transform"
+                    onError={(e) => { e.target.src = 'https://media.api-sports.io/football/teams/unknown.png'; }}
+                    referrerPolicy="no-referrer"
+                  />
+                  <span className="text-xs font-black text-white text-center truncate w-24">
+                    {typeof heroMatch.homeTeam === 'object' ? heroMatch.homeTeam?.name : heroMatch.homeTeam}
+                  </span>
+                </div>
 
-                  <div className="flex flex-col items-center">
-                    {heroMatches[0].status === 'LIVE' ? (
-                      <>
-                        <div className="text-3xl font-black text-primary tracking-widest font-mono">
-                          {heroMatches[0].homeScore} : {heroMatches[0].awayScore}
-                        </div>
-                        <span className="text-[10px] bg-red-500/10 text-red-500 border border-red-500/20 px-2.5 py-0.5 rounded mt-2 font-bold animate-pulse">
-                          الدقيقة {heroMatches[0].minute || '75'}
-                        </span>
-                      </>
-                    ) : (
-                      <>
-                        <span className="text-xs text-slate-400 font-bold mb-1">تبدأ قريباً</span>
-                        <div className="text-base font-black bg-surface px-3 py-1 rounded-md text-primary tracking-wide">
-                          {heroMatches[0].startTime ? new Date(heroMatches[0].startTime).toLocaleTimeString('ar-SA', { hour: '2-digit', minute: '2-digit' }) : '20:45'}
-                        </div>
-                      </>
-                    )}
-                  </div>
+                {/* Score vs Status */}
+                <div className="flex flex-col items-center justify-center px-4">
+                  {heroMatch.isLive || heroMatch.status === 'LIVE' ? (
+                    <>
+                      <div className="text-2xl md:text-3xl font-black text-primary tracking-widest font-mono">
+                        {(heroMatch.score?.home !== null && heroMatch.score?.home !== undefined) ? heroMatch.score.home : (heroMatch.homeScore ?? 0)}
+                        <span className="mx-1 text-gray-500">:</span>
+                        {(heroMatch.score?.away !== null && heroMatch.score?.away !== undefined) ? heroMatch.score.away : (heroMatch.awayScore ?? 0)}
+                      </div>
+                      <span className="text-[9px] bg-red-500/10 text-red-400 border border-red-500/20 px-2 py-0.5 rounded mt-2 font-mono font-bold animate-pulse">
+                        الدقيقة '{heroMatch.minute || '75'}
+                      </span>
+                    </>
+                  ) : (
+                    <>
+                      <span className="text-[9px] text-gray-400 font-bold mb-1 select-none">تبدأ قريباً</span>
+                      <div className="text-xs font-black bg-white/5 px-2.5 py-1 rounded text-primary tracking-wide font-mono">
+                        {formattedStartTime(heroMatch.startTime || heroMatch.utcDate)}
+                      </div>
+                    </>
+                  )}
+                </div>
 
-                  <div className="flex flex-col items-center space-y-2">
-                    <img 
-                      src={heroMatches[0].awayLogo} 
-                      alt={heroMatches[0].awayTeam} 
-                      className="w-12 h-12 object-contain filter drop-shadow" 
-                      referrerPolicy="no-referrer"
-                    />
-                    <span className="text-xs font-black text-white text-center truncate w-24">
-                      {heroMatches[0].awayTeam}
-                    </span>
-                  </div>
+                {/* Away Team */}
+                <div className="flex flex-col items-center space-y-2.5 flex-1">
+                  <img 
+                    src={heroMatch.awayLogo || (typeof heroMatch.awayTeam === 'object' && heroMatch.awayTeam?.logo)} 
+                    alt="" 
+                    className="w-14 h-14 object-contain filter drop-shadow hover:scale-105 transition-transform"
+                    onError={(e) => { e.target.src = 'https://media.api-sports.io/football/teams/unknown.png'; }}
+                    referrerPolicy="no-referrer"
+                  />
+                  <span className="text-xs font-black text-white text-center truncate w-24">
+                    {typeof heroMatch.awayTeam === 'object' ? heroMatch.awayTeam?.name : heroMatch.awayTeam}
+                  </span>
                 </div>
               </div>
             </div>
           </section>
         )}
 
-        {/* Dynamic Horizontal League Selector List */}
-        <HorizontalLeagueList 
-          leagues={leagues} 
-          selectedLeague={selectedLeague} 
-          onSelect={setSelectedLeague} 
-        />
-
-        {/* PHASE 7 — Native Monetization Placement (Sleek Banner beneath Hero Slider) */}
-        {!profile?.isVIP && (
-          <div className="select-none">
-            <AdBanner slot="Home_Top" />
-          </div>
-        )}
-
-        {/* Featured Leagues Smart Filters */}
-        <section className="space-y-4 select-none" style={{ direction: 'rtl' }}>
-          <div className="flex items-center justify-between px-1">
-            <div className="flex items-center gap-1.5 text-xs font-black text-slate-400 dark:text-gray-400 tracking-wider">
-              <Trophy size={14} className="text-primary animate-pulse" />
-              <span>البطولات الكبرى (تصفية حية فائقة)</span>
+        {/* 3. HORIZONTAL LIVE MATCHES SECTION */}
+        <section className="space-y-4">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <span className="w-2 h-2 rounded-full bg-red-500 animate-pulse inline-block"></span>
+              <h3 className="text-sm font-black text-white">المباريات المباشرة والنتائج الحية</h3>
             </div>
-            {selectedLeague && (
-              <button 
-                onClick={() => setSelectedLeague(null)}
-                className="text-[10px] font-black text-rose-500 dark:text-red-400 bg-rose-500/10 px-3 py-1 rounded-full border border-rose-500/20 hover:bg-rose-500/20 transition-all cursor-pointer duration-300"
-              >
-                إلغاء التصفية (عرض الكل)
-              </button>
-            )}
+            <Link to="/schedule?tab=LIVE" className="text-[11px] font-bold text-primary flex items-center gap-1 hover:underline">
+              <span>مشاهدة الكل</span>
+              <ChevronLeft size={14} />
+            </Link>
           </div>
-          
-          <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-            {[
-              { 
-                name: 'الدوري الإسباني', 
-                emoji: '🇪🇸', 
-                badge: 'لا ليغا',
-                icon: Trophy, 
-                colorClass: 'text-amber-500 bg-amber-500/10 border-amber-500/20',
-                activeColor: 'shadow-[0_4px_20px_rgba(245,158,11,0.25)] border-amber-400 bg-amber-500/10 dark:bg-amber-500/15 text-amber-500 dark:text-amber-400'
-              },
-              { 
-                name: 'الدوري السعودي', 
-                emoji: '🇸🇦', 
-                badge: 'روشن للمحترفين',
-                icon: Flame, 
-                colorClass: 'text-emerald-500 bg-emerald-500/10 border-emerald-500/20',
-                activeColor: 'shadow-[0_4px_20px_rgba(16,185,129,0.25)] border-emerald-400 bg-emerald-500/10 dark:bg-emerald-500/15 text-emerald-500 dark:text-emerald-400'
-              },
-              { 
-                name: 'الدوري الإنجليزي', 
-                emoji: '🏴󠁧󠁢󠁥󠁮󠁧󠁿', 
-                badge: 'بريميرليغ',
-                icon: Award, 
-                colorClass: 'text-violet-500 bg-violet-500/10 border-violet-500/20',
-                activeColor: 'shadow-[0_4px_20px_rgba(139,92,246,0.25)] border-violet-400 bg-violet-400/10 dark:bg-violet-400/15 text-violet-500 dark:text-violet-400'
-              },
-              { 
-                name: 'دوري الأبطال', 
-                emoji: '🇪🇺', 
-                badge: 'ذات الأذنين',
-                icon: Star, 
-                colorClass: 'text-sky-500 bg-sky-500/10 border-sky-500/20',
-                activeColor: 'shadow-[0_4px_20px_rgba(14,165,233,0.25)] border-sky-400 bg-sky-500/10 dark:bg-sky-500/15 text-sky-500 dark:text-sky-400'
-              }
-            ].map((league) => {
-              const isSelected = selectedLeague === league.name || (league.name === 'دوري الأبطال' && selectedLeague === 'دوري أبطال أوروبا');
-              const IconComp = league.icon;
-              return (
-                <motion.div 
-                  key={league.name} 
-                  whileHover={{ scale: 1.02, y: -2 }}
-                  whileTap={{ scale: 0.98 }}
-                  onClick={() => setSelectedLeague(isSelected ? null : league.name)}
-                  className={`relative p-4 rounded-2xl flex items-center justify-between cursor-pointer border transition-all duration-300 overflow-hidden ${
-                    isSelected 
-                      ? `${league.activeColor} font-black` 
-                      : 'bg-surface hover:bg-surface-hover/80 border-border'
-                  }`}
-                >
-                  <div className="flex items-center gap-3 relative z-10">
-                    <div className={`w-10 h-10 rounded-xl flex items-center justify-center border transition-all duration-300 ${
-                      isSelected ? 'bg-white/15 border-white/20 scale-105' : league.colorClass
-                    }`}>
-                      <IconComp size={20} />
-                    </div>
-                    
-                    <div className="flex flex-col text-right">
-                      <span className="text-[10px] font-bold uppercase opacity-60">
-                        {league.badge}
-                      </span>
-                      <span className={`text-xs font-black transition-colors ${
-                        isSelected ? 'text-current' : 'text-slate-900 dark:text-white'
-                      }`}>
-                        {league.name}
-                      </span>
-                    </div>
-                  </div>
 
-                  <span className="text-xl relative z-10 drop-shadow-sm select-none">
-                    {league.emoji}
-                  </span>
-                </motion.div>
-              );
-            })}
-          </div>
+          {liveLoading ? (
+            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
+              {[1, 2, 3].map(i => (
+                <div key={i} className="h-44 bg-surface/50 rounded-2xl border border-white/5 animate-pulse" />
+              ))}
+            </div>
+          ) : liveMatches.length > 0 ? (
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+              {liveMatches.slice(0, 3).map(match => (
+                <div key={match.id} className="relative">
+                  {isFavorite(match) && (
+                    <div className="absolute top-2 right-2 z-10 bg-yellow-400 text-black p-1 rounded-full shadow border border-background">
+                      <Star size={10} className="fill-current" />
+                    </div>
+                  )}
+                  <MatchCard match={match} />
+                </div>
+              ))}
+            </div>
+          ) : (
+            <div className="rounded-2xl border border-white/5 bg-[#0b1424] p-8 text-center space-y-3">
+              <p className="text-xs text-gray-400 font-bold">لا تتوفر مباريات حية مباشرة حالياً في الخادم.</p>
+              <button 
+                onClick={() => navigate('/schedule?tab=TODAY')}
+                className="mx-auto flex items-center gap-1.5 bg-primary/10 border border-primary/20 text-primary px-4 py-1.5 rounded-full text-[11px] font-black hover:bg-primary/20 cursor-pointer"
+              >
+                <span>مراجعة مباريات اليوم المجدولة</span>
+              </button>
+            </div>
+          )}
         </section>
 
-        {/* Search bar Component */}
-        <div className="relative w-full select-none">
-          <div className="absolute inset-y-0 right-4 flex items-center pointer-events-none text-primary">
-            <Search size={16} />
-          </div>
-          <input
-            id="search-input"
-            type="text"
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            placeholder="ابحث عن مباراة، معلق، بطولة، أو فريق..."
-            className="w-full text-right outline-none bg-surface/45 hover:bg-surface/70 focus:bg-surface border border-border focus:border-primary rounded-2xl py-3.5 pr-11 pr-11 pl-4 text-xs font-bold transition-all duration-300 placeholder:text-gray-500 shadow-sm"
-            style={{ direction: 'rtl' }}
-          />
+        {/* ADS BANNER MVP (Native in-between sections) */}
+        <div className="w-full">
+          <AdBanner slot="Home_Top" />
         </div>
 
-        {/* Breaking News layout */}
-        <BreakingNews />
-
-        {/* Error / Empty state check */}
-        {hasError ? (
-          <div className="glass p-12 rounded-[32px] text-center space-y-4 max-w-sm mx-auto my-12" style={{ direction: 'rtl' }}>
-            <AlertTriangle className="text-red-500 mx-auto w-12 h-12 animate-bounce" />
-            <h3 className="text-lg font-black text-white">عذراً، حدث خطأ أثناء المبانزة</h3>
-            <p className="text-xs text-gray-400 font-bold leading-normal">
-              لم نتمكن من جلب بيانات المباريات المباشرة واليومية من الخادم حالياً. يرجى إعادة المحاولة.
-            </p>
-            <button 
-              onClick={() => window.location.reload()}
-              className="mx-auto flex items-center gap-2 bg-primary/20 hover:bg-primary/30 border border-primary/30 text-primary px-6 py-2.5 rounded-full text-xs font-black cursor-pointer transition-all"
-            >
-              <RefreshCw size={14} />
-              <span>تحديث البيانات الآن</span>
-            </button>
-          </div>
-        ) : (
-          <div className="space-y-12">
+        {/* 4. TRENDING MATCHES (POPULAR SMART SECTION) */}
+        {trendingMatches.length > 0 && (
+          <section className="space-y-4">
+            <div className="flex items-center gap-2">
+              <Flame size={16} className="text-amber-500 animate-bounce" />
+              <h3 className="text-sm font-black text-white">المباريات الأكثر طلباً وشعبية</h3>
+            </div>
             
-            {/* Live Matches section */}
-            <section id="live-matches" className="space-y-5" style={{ direction: 'rtl' }}>
-              <SectionTitle 
-                title="مباريات تبث مباشر الآن" 
-                icon={Radio} 
-                badge={liveMatchesList.length} 
-                subtitle="تغطية وتحليلات حية لحظة بلحظة" 
-              />
-
-              {liveMatchesList.length > 0 ? (
-                <div className="grid gap-6 grid-cols-1 md:grid-cols-2 lg:grid-cols-3">
-                  {liveMatchesList.map(match => (
-                    <div key={match.id} className="relative">
-                      {isFavorite(match) && (
-                        <div className="absolute -top-1.5 -right-1.5 z-10 bg-yellow-400 text-black p-1 rounded-full shadow-lg border border-background">
-                          <Star size={11} className="fill-current" />
-                        </div>
-                      )}
-                      <MatchCard match={match} />
-                    </div>
-                  ))}
-                </div>
-              ) : (
-                <div className="glass p-10 rounded-[32px] text-center border border-white/5 space-y-3">
-                  <p className="text-gray-400 font-bold text-xs">لا تتوفر مباريات مباشرة جارية حالياً.</p>
-                  <button 
-                    onClick={() => {
-                      const el = document.getElementById('today-matches');
-                      if (el) el.scrollIntoView({ behavior: 'smooth' });
-                    }}
-                    className="bg-primary/10 hover:bg-primary/20 text-primary border border-primary/20 px-5 py-2 rounded-full text-xs font-black transition-all"
-                  >
-                    عرض مباريات اليوم المجدولة
-                  </button>
-                </div>
-              )}
-            </section>
-
-            {/* PHASE 7 — Native In-Between Matches Feed Ad */}
-            {!profile?.isVIP && (
-              <div className="select-none py-2 my-2 rounded-[24px] overflow-hidden">
-                <AdBanner slot="News_Detail_Sidebar" />
-              </div>
-            )}
-
-            {/* Today's schedule section */}
-            <section id="today-matches" className="space-y-5" style={{ direction: 'rtl' }}>
-              <SectionTitle 
-                title="جدول مواعيد مباريات اليوم" 
-                icon={CalendarDays} 
-                badge={todayMatchesList.length} 
-                subtitle="قنوات البث المباشر المحدثة والترتيب" 
-              />
-
-              {groupedTodayLeagues.length > 0 ? (
-                <div className="space-y-8">
-                  {groupedTodayLeagues.map(group => (
-                    <LeagueSection 
-                      key={group.leagueName}
-                      leagueName={group.leagueName}
-                      leagueLogo={group.leagueLogo}
-                      matches={group.matches}
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              {trendingMatches.map(m => (
+                <Link 
+                  key={m.id}
+                  to={`/match/${m.id}`}
+                  className="rounded-2xl border border-white/5 bg-[#0b1424]/60 hover:bg-[#0b1424] p-4 flex items-center justify-between transition-all duration-300 hover:border-primary/20"
+                >
+                  <div className="flex items-center gap-3">
+                    <img 
+                      src={m.homeLogo || (typeof m.homeTeam === 'object' && m.homeTeam?.logo)} 
+                      alt="" 
+                      className="w-8 h-8 object-contain"
+                      onError={(e) => { e.target.src = 'https://media.api-sports.io/football/teams/unknown.png'; }}
+                      referrerPolicy="no-referrer"
                     />
-                  ))}
-                </div>
-              ) : (
-                <div className="glass p-12 rounded-[32px] text-center border border-white/5">
-                  <p className="text-gray-400 font-bold text-xs">لا توجد مباريات مجدولة لليوم في بطولة {selectedLeague || 'الجميع'}.</p>
-                </div>
-              )}
-            </section>
+                    <span className="text-xs font-black text-white">{typeof m.homeTeam === 'object' ? m.homeTeam?.name : m.homeTeam}</span>
+                  </div>
 
-            {/* Finished matches results section */}
-            <section id="finished-matches" className="space-y-5" style={{ direction: 'rtl' }}>
-              <SectionTitle 
-                title="المباريات والنتائج الأخيرة" 
-                icon={CheckCircle2} 
-                badge={finishedMatchesList.length} 
-                subtitle="ملخصات الأهداف وتفاصيل الإحصاءات" 
-              />
+                  <div className="flex flex-col items-center px-2 bg-white/5 rounded-xl py-1">
+                    <span className="text-[9px] text-primary font-black uppercase tracking-widest">{m.status?.long || m.status}</span>
+                    <span className="text-xs font-bold font-mono text-white mt-0.5">
+                      {m.isLive || m.status === 'LIVE' ? `${m.homeScore ?? 0} - ${m.awayScore ?? 0}` : formattedStartTime(m.startTime || m.utcDate)}
+                    </span>
+                  </div>
 
-              {groupedFinishedLeagues.length > 0 ? (
-                <div className="space-y-8">
-                  {groupedFinishedLeagues.map(group => (
-                    <LeagueSection 
-                      key={`finished-${group.leagueName}`}
-                      leagueName={group.leagueName}
-                      leagueLogo={group.leagueLogo}
-                      matches={group.matches}
+                  <div className="flex items-center gap-3">
+                    <span className="text-xs font-black text-white text-left">{typeof m.awayTeam === 'object' ? m.awayTeam?.name : m.awayTeam}</span>
+                    <img 
+                      src={m.awayLogo || (typeof m.awayTeam === 'object' && m.awayTeam?.logo)} 
+                      alt="" 
+                      className="w-8 h-8 object-contain"
+                      onError={(e) => { e.target.src = 'https://media.api-sports.io/football/teams/unknown.png'; }}
+                      referrerPolicy="no-referrer"
                     />
-                  ))}
-                </div>
-              ) : (
-                <div className="glass p-12 rounded-[32px] text-center border border-white/5">
-                  <p className="text-gray-400 font-bold text-xs">لا تتوفر نتائج لقاءات سابقة لليوم.</p>
-                </div>
-              )}
-            </section>
-
-            {/* Promote Share Widget Box */}
-            <motion.div
-              initial={{ opacity: 0, y: 15 }}
-              whileInView={{ opacity: 1, y: 0 }}
-              viewport={{ once: true }}
-              className="glass p-6 md:p-8 rounded-[32px] border border-primary/20 bg-gradient-to-r from-surface to-primary/5 flex flex-col md:flex-row items-center justify-between gap-6 shadow-[0_15px_30px_rgba(0,223,130,0.05)]"
-              style={{ direction: 'rtl' }}
-            >
-              <div className="space-y-2 text-right">
-                <div className="flex items-center gap-2">
-                  <span className="flex h-2 w-2 rounded-full bg-primary animate-pulse" />
-                  <span className="text-[10px] font-black tracking-wider text-primary uppercase">تطبيق المشجعين الأول كورة 90 ⚽</span>
-                </div>
-                <h3 className="text-lg md:text-xl font-black text-white">تابع أحداث فريقك المفضل أينما كنت!</h3>
-                <p className="text-xs text-gray-400 font-bold">ملخصات الأهداف الفورية، جداول المباريات الحية، والتحليلات المتكاملة بنقرة واحدة.</p>
-              </div>
-              <div className="shrink-0">
-                <ShareButton variant="dropdown" text="كورة 90 هو دليلك الفائق لمتابعة المباريات الحية بدون تقطيع والتحليل الذكي! شاركه مع رفاقك الآن." />
-              </div>
-            </motion.div>
-
-          </div>
+                  </div>
+                </Link>
+              ))}
+            </div>
+          </section>
         )}
+
+        {/* 5. COMPETITIONS CAROUSEL (LEAGUES) */}
+        <section className="space-y-4">
+          <div className="flex items-center gap-2">
+            <Trophy size={16} className="text-cyan-400" />
+            <h3 className="text-sm font-black text-white">الدوريات والبطولات الرياضية</h3>
+          </div>
+
+          {leaguesLoading ? (
+            <div className="flex gap-4 overflow-x-auto pb-2 shrink-0">
+              {[1, 2, 3, 4, 5].map(i => (
+                <div key={i} className="w-32 h-20 bg-surface/50 rounded-xl border border-white/5 shrink-0 animate-pulse" />
+              ))}
+            </div>
+          ) : leaguesList.length > 0 ? (
+            <div className="flex gap-3 overflow-x-auto pb-3 scrollbar-none shrink-0" style={{ scrollSnapType: 'x mandatory' }}>
+              {leaguesList.map(item => {
+                const lName = typeof item === 'string' ? item : (item.name || 'الدوري');
+                const lLogo = typeof item === 'object' ? item.emblem || item.logo : '';
+                const lId = typeof item === 'object' ? item.id : String(item);
+
+                return (
+                  <motion.button
+                    key={lId}
+                    whileHover={{ scale: 1.03, y: -2 }}
+                    whileTap={{ scale: 0.97 }}
+                    onClick={() => navigate(`/league/${lId}`)}
+                    className="w-36 h-24 bg-[#0b1424] border border-white/5 rounded-2xl flex flex-col items-center justify-center p-3 text-center shrink-0 hover:border-cyan-500/30 cursor-pointer snap-start transition-all duration-300 shadow-sm"
+                  >
+                    {lLogo ? (
+                      <img 
+                        src={lLogo} 
+                        alt="" 
+                        className="w-9 h-9 object-contain mb-2 filter drop-shadow-sm" 
+                        onError={(e) => { e.target.src = 'https://media.api-sports.io/football/leagues/unknown.png'; }}
+                        referrerPolicy="no-referrer"
+                      />
+                    ) : (
+                      <div className="w-8 h-8 rounded-full bg-white/5 flex items-center justify-center mb-2 text-xs font-black text-primary">⚽</div>
+                    )}
+                    <span className="text-[10px] font-black text-gray-200 truncate w-full">{lName}</span>
+                  </motion.button>
+                );
+              })}
+            </div>
+          ) : null}
+        </section>
+
+        {/* 6. SPORTS NEWS PREVIEW (3 - 5 CARDS) */}
+        <section className="space-y-4">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <Sparkles size={16} className="text-cyan-400 animate-pulse" />
+              <h3 className="text-sm font-black text-white">أبرز الأخبار العاجلة والانتقالات</h3>
+            </div>
+            <Link to="/news" className="text-[11px] font-bold text-primary flex items-center gap-1 hover:underline">
+              <span>تصفح الأخبار</span>
+              <ChevronLeft size={14} />
+            </Link>
+          </div>
+
+          {newsLoading ? (
+            <div className="space-y-3">
+              {[1, 2, 3].map(i => (
+                <div key={i} className="h-24 bg-surface/50 rounded-2xl border border-white/5 animate-pulse" />
+              ))}
+            </div>
+          ) : newsArticles.length > 0 ? (
+            <div className="space-y-3.5">
+              {newsArticles.map((art, index) => {
+                const fallbackImg = 'https://images.unsplash.com/photo-1508098682722-e99c43a406b2?q=80&w=800';
+                
+                return (
+                  <motion.div
+                    key={art.id || index}
+                    whileHover={{ x: -4 }}
+                    onClick={() => navigate(`/news`)}
+                    className="group rounded-2xl border border-white/5 bg-[#0b1424] hover:bg-[#0d182b] p-3 flex gap-4 items-center cursor-pointer transition-all duration-300"
+                  >
+                    <div className="w-20 h-20 rounded-xl overflow-hidden shrink-0 border border-white/5 bg-slate-900">
+                      <img 
+                        src={art.image || fallbackImg} 
+                        alt="" 
+                        className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" 
+                        onError={(e) => { e.target.src = fallbackImg; }}
+                        referrerPolicy="no-referrer"
+                      />
+                    </div>
+                    
+                    <div className="flex-1 space-y-1.5 min-w-0">
+                      <div className="flex items-center gap-2 text-[10px] text-gray-400 font-bold">
+                        <span className="text-primary font-black bg-primary/10 px-2 py-0.5 rounded-md">
+                          {art.sourceName || 'أخبار كورة لايف'}
+                        </span>
+                        <span>•</span>
+                        <span>{art.publishedAt ? new Date(art.publishedAt).toLocaleDateString('ar-EG', { month: 'short', day: 'numeric' }) : 'اليوم'}</span>
+                      </div>
+                      
+                      <h4 className="text-xs font-black text-white group-hover:text-primary transition-colors leading-snug line-clamp-2">
+                        {art.title}
+                      </h4>
+                    </div>
+                  </motion.div>
+                );
+              })}
+            </div>
+          ) : (
+            <div className="rounded-2xl border border-white/5 bg-[#0b1424] p-8 text-center">
+              <p className="text-xs text-gray-400 font-bold">لا تتوفر مقالات إخبارية حية في الوقت الحالي.</p>
+            </div>
+          )}
+        </section>
+
       </main>
     </div>
   );

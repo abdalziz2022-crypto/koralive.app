@@ -1,129 +1,230 @@
-import { getFixture, getEvents, getStatistics, getLineups } from '../api/matchApi';
+import apiClient, { getActiveApiKey } from '../api/apiClient';
+import { Match, MatchEvent, MatchStat, TeamLineup } from '../types';
+import { 
+  mapRawMatch, 
+  mapRawMatches, 
+  mapRawEvents, 
+  mapRawStats, 
+  mapRawLineups 
+} from './matchMapper';
 
-function mapHeader(fixtureData: any) {
-  if (!fixtureData || !fixtureData.response || fixtureData.response.length === 0) {
-    return null;
-  }
-  const data = fixtureData.response[0];
-  return {
-    homeTeam: data.teams?.home?.name,
-    awayTeam: data.teams?.away?.name,
-    homeLogo: data.teams?.home?.logo,
-    awayLogo: data.teams?.away?.logo,
-    homeGoals: data.goals?.home,
-    awayGoals: data.goals?.away,
-    league: data.league?.name,
-    status: data.fixture?.status?.short,
-    elapsedTime: data.fixture?.status?.elapsed
-  };
-}
-
-function mapTimeline(eventsData: any) {
-  if (!eventsData || !eventsData.response) {
-    return [];
-  }
-  
-  return eventsData.response.map((event: any) => {
-    let mappedType = event.type;
-    if (mappedType === 'subst') mappedType = 'Substitution';
-    if (mappedType === 'Var') mappedType = 'VAR';
-
-    const minute = event.time?.extra
-      ? `${event.time.elapsed}+${event.time.extra}`
-      : `${event.time?.elapsed || ''}`;
-
-    return {
-      minute,
-      type: mappedType,
-      player: event.player?.name || '',
-      team: event.team?.name || '',
-      detail: event.detail || ''
-    };
-  });
-}
-
-function mapStats(statsData: any) {
-  if (!statsData || !statsData.response || statsData.response.length < 2) {
-    return [];
-  }
-
-  const homeStats = statsData.response[0].statistics;
-  const awayStats = statsData.response[1].statistics;
-
-  const getStatValue = (stats: any[], type: string) => {
-    const stat = stats.find((s: any) => s.type === type);
-    return stat?.value !== null && stat?.value !== undefined ? stat.value : 0;
-  };
-
-  return [
-    {
-      label: 'Possession',
-      home: getStatValue(homeStats, 'Ball Possession'),
-      away: getStatValue(awayStats, 'Ball Possession')
-    },
-    {
-      label: 'Shots',
-      home: getStatValue(homeStats, 'Total Shots'),
-      away: getStatValue(awayStats, 'Total Shots')
-    },
-    {
-      label: 'Shots on Target',
-      home: getStatValue(homeStats, 'Shots on Goal'),
-      away: getStatValue(awayStats, 'Shots on Goal')
-    },
-    {
-      label: 'Corners',
-      home: getStatValue(homeStats, 'Corner Kicks'),
-      away: getStatValue(awayStats, 'Corner Kicks')
-    },
-    {
-      label: 'Fouls',
-      home: getStatValue(homeStats, 'Fouls'),
-      away: getStatValue(awayStats, 'Fouls')
+export const matchService = {
+  /**
+   * Fetch live matches currently in play (REAL API ONLY)
+   */
+  async getLiveMatches(): Promise<Match[]> {
+    const key = getActiveApiKey();
+    if (!key) {
+      throw new Error('NO_API_KEY: الرجاء إدخال مفتاح API-Football حقيقي للمتابعة.');
     }
-  ];
-}
 
-function mapLineups(lineupsData: any) {
-  if (!lineupsData || !lineupsData.response || lineupsData.response.length === 0) {
-    return [];
+    try {
+      const response = await apiClient.get('/fixtures', {
+        params: { live: 'all' }
+      });
+      
+      const rawMatches = response.data?.response || [];
+      return mapRawMatches(rawMatches);
+    } catch (error: any) {
+      console.error('[matchService] Failed to fetch live matches:', error);
+      throw error;
+    }
+  },
+
+  /**
+   * Fetch fixtures for a given date or league (REAL API ONLY)
+   */
+  async getFixtures(filters: { date?: string; leagueId?: string; season?: string } = {}): Promise<Match[]> {
+    const key = getActiveApiKey();
+    if (!key) {
+      throw new Error('NO_API_KEY: الرجاء إدخال مفتاح API-Football حقيقي للمتابعة.');
+    }
+
+    try {
+      const params: any = {};
+      if (filters.date) params.date = filters.date;
+      if (filters.leagueId) params.league = filters.leagueId;
+      if (filters.season) params.season = filters.season;
+
+      // Default to today if no filters supplied
+      if (!filters.date && !filters.leagueId) {
+        params.date = new Date().toISOString().split('T')[0];
+      }
+
+      const response = await apiClient.get('/fixtures', { params });
+      const rawMatches = response.data?.response || [];
+      return mapRawMatches(rawMatches);
+    } catch (error: any) {
+      console.error('[matchService] Failed to fetch fixtures:', error);
+      throw error;
+    }
+  },
+
+  /**
+   * Fetch a single match details by ID (REAL API ONLY)
+   */
+  async getMatchDetails(id: string): Promise<Match> {
+    const apiId = id.replace('apf-', '');
+    const key = getActiveApiKey();
+    if (!key) {
+      throw new Error('NO_API_KEY: الرجاء إدخال مفتاح API-Football حقيقي للمتابعة.');
+    }
+
+    try {
+      const response = await apiClient.get('/fixtures', {
+        params: { id: apiId }
+      });
+      const rawMatch = response.data?.response?.[0];
+      if (!rawMatch) {
+        throw new Error(`MATCH_NOT_FOUND: لم يتم العثور على المباراة بالمعرف ${apiId}`);
+      }
+      return mapRawMatch(rawMatch);
+    } catch (error: any) {
+      console.error('[matchService] Failed to fetch match details:', error);
+      throw error;
+    }
+  },
+
+  /**
+   * Fetch live events of a match (REAL API ONLY)
+   */
+  async getEvents(id: string): Promise<MatchEvent[]> {
+    const apiId = id.replace('apf-', '');
+    const key = getActiveApiKey();
+    if (!key) {
+      throw new Error('NO_API_KEY: الرجاء إدخال مفتاح API-Football حقيقي للمتابعة.');
+    }
+
+    try {
+      const response = await apiClient.get('/fixtures/events', {
+        params: { fixture: apiId }
+      });
+      return mapRawEvents(response.data?.response || []);
+    } catch (error: any) {
+      console.error('[matchService] Error fetching events:', error);
+      throw error;
+    }
+  },
+
+  /**
+   * Fetch statistics for a match (REAL API ONLY)
+   */
+  async getStatistics(id: string): Promise<MatchStat[]> {
+    const apiId = id.replace('apf-', '');
+    const key = getActiveApiKey();
+    if (!key) {
+      throw new Error('NO_API_KEY: الرجاء إدخال مفتاح API-Football حقيقي للمتابعة.');
+    }
+
+    try {
+      const response = await apiClient.get('/fixtures/statistics', {
+        params: { fixture: apiId }
+      });
+      return mapRawStats(response.data?.response || []);
+    } catch (error: any) {
+      console.error('[matchService] Error fetching statistics:', error);
+      throw error;
+    }
+  },
+
+  /**
+   * Fetch lineups for a fixture (REAL API ONLY)
+   */
+  async getLineups(id: string): Promise<TeamLineup[]> {
+    const apiId = id.replace('apf-', '');
+    const key = getActiveApiKey();
+    if (!key) {
+      throw new Error('NO_API_KEY: الرجاء إدخال مفتاح API-Football حقيقي للمتابعة.');
+    }
+
+    try {
+      const response = await apiClient.get('/fixtures/lineups', {
+        params: { fixture: apiId }
+      });
+      return mapRawLineups(response.data?.response || []);
+    } catch (error: any) {
+      console.error('[matchService] Error fetching lineups:', error);
+      throw error;
+    }
+  },
+
+  /**
+   * Fetch head to head history for matches (REAL API ONLY)
+   */
+  async getHeadToHead(homeId: string, awayId: string): Promise<Match[]> {
+    const rawHome = homeId.replace('apf-', '');
+    const rawAway = awayId.replace('apf-', '');
+    const key = getActiveApiKey();
+    if (!key) {
+      throw new Error('NO_API_KEY: الرجاء إدخال مفتاح API-Football حقيقي للمتابعة.');
+    }
+
+    try {
+      const response = await apiClient.get('/fixtures', {
+        params: { h2h: `${rawHome}-${rawAway}` }
+      });
+      return mapRawMatches(response.data?.response || []);
+    } catch (error: any) {
+      console.error('[matchService] Error fetching head to head history:', error);
+      throw error;
+    }
   }
-  
-  return lineupsData.response.map((lineup: any) => ({
-    team: lineup.team?.name,
-    logo: lineup.team?.logo,
-    formation: lineup.formation,
-    startingXI: lineup.startXI?.map((item: any) => ({
-      name: item.player?.name,
-      number: item.player?.number,
-      position: item.player?.pos
-    })) || [],
-    bench: lineup.substitutes?.map((item: any) => ({
-      name: item.player?.name,
-      number: item.player?.number,
-      position: item.player?.pos
-    })) || [],
-    coach: lineup.coach?.name
-  }));
-}
+};
 
+// Deprecated alias compatibility
 export async function fetchFullMatchDetails(id: string | number) {
   try {
-    const [fixtureRes, eventsRes, statsRes, lineupsRes] = await Promise.all([
-      getFixture(id),
-      getEvents(id),
-      getStatistics(id),
-      getLineups(id)
+    const stringId = String(id);
+    const [details, events, stats, lineups] = await Promise.all([
+      matchService.getMatchDetails(stringId),
+      matchService.getEvents(stringId),
+      matchService.getStatistics(stringId),
+      matchService.getLineups(stringId)
     ]);
 
     return {
-      header: mapHeader(fixtureRes),
-      timeline: mapTimeline(eventsRes),
-      stats: mapStats(statsRes),
-      lineups: mapLineups(lineupsRes)
+      header: {
+        homeTeam: details.homeTeam.name,
+        awayTeam: details.awayTeam.name,
+        homeLogo: details.homeTeam.logo,
+        awayLogo: details.awayTeam.logo,
+        homeGoals: details.score?.home ?? null,
+        awayGoals: details.score?.away ?? null,
+        league: typeof details.league === 'object' ? details.league.name : details.league,
+        status: typeof details.status === 'object' ? details.status.short : details.status,
+        elapsedTime: typeof details.status === 'object' ? details.status.elapsed : null
+      },
+      timeline: events.map(e => ({
+        minute: e.time.extra ? `${e.time.elapsed}+${e.time.extra}` : `${e.time.elapsed}`,
+        type: e.type,
+        player: e.player.name,
+        team: e.team.name,
+        detail: e.detail
+      })),
+      stats: stats.map(s => ({
+        label: s.type,
+        home: s.home,
+        away: s.away
+      })),
+      lineups: lineups.map(l => ({
+        team: l.team.name,
+        logo: l.team.logo,
+        formation: l.formation,
+        startingXI: l.startXI.map(x => ({
+          name: x.player.name,
+          number: x.player.number,
+          position: x.player.pos
+        })),
+        bench: l.substitutes.map(s => ({
+          name: s.player.name,
+          number: s.player.number,
+          position: s.player.pos
+        })),
+        coach: l.coach.name
+      }))
     };
   } catch (error) {
-    console.error('Error fetching full match details:', error);
+    console.error('fetchFullMatchDetails error:', error);
     throw error;
   }
 }

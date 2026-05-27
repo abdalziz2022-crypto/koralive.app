@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { apiFootballProvider } from '../providers/apiFootballProvider';
+import { matchService } from '../services/matchService';
 import MatchCard from '../components/match/MatchCard';
 import { RefreshCw, Radio, Play, AlertCircle, Sparkles, CheckCircle, Database } from 'lucide-react';
 
@@ -16,8 +16,8 @@ export default function ApiFootballTestPage() {
       setError(null);
       setRateLimited(false);
 
-      console.log('[ApiFootballTestPage] Fetching live fixtures through apiFootballProvider...');
-      const response = await apiFootballProvider.getLiveFixtures();
+      console.log('[ApiFootballTestPage] Fetching live fixtures through matchService...');
+      const response = await matchService.getLiveMatches();
       
       if (Array.isArray(response)) {
         setMatches(response);
@@ -28,7 +28,7 @@ export default function ApiFootballTestPage() {
     } catch (err) {
       console.error('[ApiFootballTestPage] Fetch direct error:', err);
       setError(err.message || 'حدث خطأ غير متوقع أثناء استرجاع البيانات من المزود.');
-      if (String(err.message).includes('429') || (err.response && err.response.status === 429)) {
+      if (String(err.message).includes('429')) {
         setRateLimited(true);
       }
     } finally {

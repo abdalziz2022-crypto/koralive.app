@@ -1,200 +1,176 @@
-import { db } from '../firebase';
-import { collection, getDocs, query, where } from 'firebase/firestore';
-import { mockMatches } from '../lib/mockData';
-
-// Top team squads database for high fidelity
-const TOP_TEAM_SQUADS = {
-  'ريال مدريد': [
-    { name: 'تيبو كورتوا', position: 'حارس مرمى', number: 1, nationality: 'بلجيكا' },
-    { name: 'داني كارفاخال', position: 'مدافع', number: 2, nationality: 'إسبانيا' },
-    { name: 'إيدير ميليتاو', position: 'مدافع', number: 3, nationality: 'البرازيل' },
-    { name: 'توني كروس', position: 'وسط', number: 8, nationality: 'ألمانيا' },
-    { name: 'جود بيلينجهام', position: 'وسط', number: 5, nationality: 'إنجلترا' },
-    { name: 'لوكا مودريتش', position: 'وسط', number: 10, nationality: 'كرواتيا' },
-    { name: 'فينيسيوس جونيور', position: 'مهاجم', number: 7, nationality: 'البرازيل' },
-    { name: 'رودريغو غوس', position: 'مهاجم', number: 11, nationality: 'البرازيل' },
-    { name: 'خوسيلو', position: 'مهاجم', number: 14, nationality: 'إسبانيا' }
-  ],
-  'برشلونة': [
-    { name: 'مارك أندريه تير شتيغن', position: 'حارس مرمى', number: 1, nationality: 'ألمانيا' },
-    { name: 'رونالد أراوخو', position: 'مدافع', number: 4, nationality: 'الأوروغواي' },
-    { name: 'جول كوندي', position: 'مدافع', number: 23, nationality: 'فرنسا' },
-    { name: 'بيدري غونزاليس', position: 'وسط', number: 8, nationality: 'إسبانيا' },
-    { name: 'جافي', position: 'وسط', number: 6, nationality: 'إسبانيا' },
-    { name: 'فرينكي دي يونغ', position: 'وسط', number: 21, nationality: 'هولندا' },
-    { name: 'روبرت ليفاندوفسكي', position: 'مهاجم', number: 9, nationality: 'بولندا' },
-    { name: 'رافينيا دياز', position: 'مهاجم', number: 11, nationality: 'البرازيل' },
-    { name: 'لامين يامال', position: 'مهاجم', number: 27, nationality: 'إسبانيا' }
-  ],
-  'الهلال': [
-    { name: 'ياسين بونو', position: 'حارس مرمى', number: 37, nationality: 'المغرب' },
-    { name: 'علي البليهي', position: 'مدافع', number: 5, nationality: 'السعودية' },
-    { name: 'كاليدو كوليبالي', position: 'مدافع', number: 3, nationality: 'السنغال' },
-    { name: 'سعود عبد الحميد', position: 'مدافع', number: 66, nationality: 'السعودية' },
-    { name: 'روبن نيفيز', position: 'وسط', number: 8, nationality: 'البرتغال' },
-    { name: 'سيرجي ميلينكوفيتش سافيتش', position: 'وسط', number: 22, nationality: 'صربيا' },
-    { name: 'سالم الدوسري', position: 'مهاجم', number: 29, nationality: 'السعودية' },
-    { name: 'ميتروفيتش', position: 'مهاجم', number: 9, nationality: 'صربيا' },
-    { name: 'مالكوم', position: 'مهاجم', number: 77, nationality: 'البرازيل' }
-  ],
-  'النصر': [
-    { name: 'دافيد أوسبينا', position: 'حارس مرمى', number: 26, nationality: 'كولومبيا' },
-    { name: 'أيميريك لابورت', position: 'مدافع', number: 27, nationality: 'إسبانيا' },
-    { name: 'سلطان الغنام', position: 'مدافع', number: 2, nationality: 'السعودية' },
-    { name: 'بروزوفيتش', position: 'وسط', number: 77, nationality: 'كرواتيا' },
-    { name: 'عبد الله الخيبري', position: 'وسط', number: 17, nationality: 'السعودية' },
-    { name: 'أوتافيو', position: 'وسط', number: 25, nationality: 'البرتغال' },
-    { name: 'ساديو ماني', position: 'مهاجم', number: 10, nationality: 'السنغال' },
-    { name: 'كريستيانو رونالدو', position: 'مهاجم', number: 7, nationality: 'البرتغال' },
-    { name: 'تاليسكا', position: 'مهاجم', number: 94, nationality: 'البرازيل' }
-  ],
-  'ليفربول': [
-    { name: 'أليسون بيكر', position: 'حارس مرمى', number: 1, nationality: 'البرازيل' },
-    { name: 'فيرجيل فان دايك', position: 'مدافع', number: 4, nationality: 'هولندا' },
-    { name: 'إبراهيما كوناتي', position: 'مدافع', number: 5, nationality: 'فرنسا' },
-    { name: 'ترينت ألكسندر أرنولد', position: 'مدافع', number: 66, nationality: 'إنجلترا' },
-    { name: 'ألكسيس ماك أليستير', position: 'وسط', number: 10, nationality: 'الأرجنتين' },
-    { name: 'دومينيك سوبوسلاي', position: 'وسط', number: 8, nationality: 'المجر' },
-    { name: 'واتارو إندو', position: 'وسط', number: 3, nationality: 'اليابان' },
-    { name: 'محمد صلاح', position: 'مهاجم', number: 11, nationality: 'مصر' },
-    { name: 'لويس دياز', position: 'مهاجم', number: 7, nationality: 'كولومبيا' },
-    { name: 'داروين نونيز', position: 'مهاجم', number: 9, nationality: 'الأوروغواي' }
-  ]
-};
+import apiClient from './apiClient';
+import { teamService } from '../services/teamService';
+import { matchService } from '../services/matchService';
+import { mapRawMatches } from '../services/matchMapper';
 
 /**
- * Fetch team basic details by name or id
- * @param {string} id - Team name or ID
+ * Fetch team basic details by numeric id or name securely via real API-Football endpoints. No mock generators.
+ * @param {string|number} id - Team identifier or search query name
  */
 export async function getTeamById(id) {
-  const decodedName = decodeURIComponent(id);
+  const query = String(id).trim();
+  const isNumeric = /^\d+$/.test(query);
 
-  // Determine country & main league based on team name
-  let country = 'دولي';
-  let league = 'بطولة عامة';
-  let stadium = 'ملعب معتمد 🏟️';
-
-  if (decodedName === 'ريال مدريد') {
-    country = 'إسبانيا';
-    league = 'الدوري الإسباني';
-    stadium = 'سانتياغو برنابيو 🏟️';
-  } else if (decodedName === 'برشلونة') {
-    country = 'إسبانيا';
-    league = 'الدوري الإسباني';
-    stadium = 'سبوتيفاي كامب نو 🏟️';
-  } else if (decodedName === 'الهلال') {
-    country = 'المملكة العربية السعودية';
-    league = 'الدوري السعودي';
-    stadium = 'المملكة أرينا 🏟️';
-  } else if (decodedName === 'النصر') {
-    country = 'المملكة العربية السعودية';
-    league = 'الدوري السعودي';
-    stadium = 'الأول بارك 🏟️';
-  } else if (decodedName === 'ليفربول') {
-    country = 'إنجلترا';
-    league = 'الدوري الإنجليزي';
-    stadium = 'أنفيلد رود 🏟️';
-  } else if (decodedName === 'مانشستر سيتي') {
-    country = 'إنجلترا';
-    league = 'الدوري الإنجليزي';
-    stadium = 'الاتحاد 🏟️';
-  } else if (decodedName === 'أرسنال') {
-    country = 'إنجلترا';
-    league = 'الدوري الإنجليزي';
-    stadium = 'الإمارات 🏟️';
+  try {
+    if (isNumeric) {
+      const details = await teamService.getTeamDetails(query);
+      return {
+        id: details.id,
+        name: details.name,
+        logo: details.logo,
+        founded: details.founded,
+        venueName: details.venueName,
+        venueCity: details.venueCity,
+        venueCapacity: details.venueCapacity,
+        country: details.country,
+        code: details.code
+      };
+    } else {
+      const response = await apiClient.get('/teams', {
+        params: { search: query }
+      });
+      const rawTeam = response.data?.response?.[0];
+      if (!rawTeam) {
+        throw new Error(`TEAM_NOT_FOUND: لم يتم العثور على نادي حقيقي باسم "${query}" في الخادم.`);
+      }
+      return {
+        id: rawTeam.team.id,
+        name: rawTeam.team.name,
+        logo: rawTeam.team.logo,
+        founded: rawTeam.team.founded,
+        venueName: rawTeam.venue.name,
+        venueCity: rawTeam.venue.city,
+        venueCapacity: rawTeam.venue.capacity,
+        country: rawTeam.team.country,
+        code: rawTeam.team.code
+      };
+    }
+  } catch (err) {
+    console.error('getTeamById Error:', err);
+    throw err;
   }
-
-  return {
-    id: decodedName,
-    name: decodedName,
-    logo: `https://api.dicebear.com/7.x/initials/svg?seed=${encodeURIComponent(decodedName)}`,
-    country,
-    league,
-    stadium
-  };
 }
 
 /**
- * Fetch matches belonging to this team (home or away)
- * @param {string} id - Team name
+ * Fetch real recent fixtures belonging to the team (recent status)
+ * @param {string|number} id - Team identifier or name
  */
 export async function getTeamMatches(id) {
   try {
-    const decodedName = decodeURIComponent(id);
-
-    // Fetch all matches from Firestore
-    const querySnapshot = await getDocs(collection(db, 'matches'));
-    let matches = [];
-
-    if (!querySnapshot.empty) {
-      matches = querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-    } else {
-      matches = mockMatches;
+    const team = await getTeamById(id);
+    if (!team || !team.id) {
+      return [];
     }
 
-    // Filter matches involving the team
-    const teamMatches = matches.filter(m => 
-      m.homeTeam === decodedName || m.awayTeam === decodedName
-    );
+    // Query 5 real recent / upcoming fixtures
+    const response = await apiClient.get('/fixtures', {
+      params: { team: team.id, last: 10 }
+    });
 
-    // Keep it robust: if no matches exist in database, return dynamic matches
-    if (teamMatches.length === 0) {
-      return mockMatches.filter(m => m.homeTeam === decodedName || m.awayTeam === decodedName || m.league === 'الدوري الإنجليزي');
+    const rawMatches = response.data?.response || [];
+    // If empty, try upcoming
+    if (rawMatches.length === 0) {
+      const nextResponse = await apiClient.get('/fixtures', {
+        params: { team: team.id, next: 10 }
+      });
+      return matchService.getFixtures ? matchService.getFixtures() : []; 
     }
 
-    return teamMatches.sort((a, b) => new Date(b.startTime) - new Date(a.startTime));
+    return mapRawMatches(rawMatches);
   } catch (err) {
-    console.error('Error fetching team matches:', err);
-    return mockMatches;
+    console.error('getTeamMatches Error:', err);
+    throw err;
   }
 }
 
 /**
  * Fetch standings of the league this team belongs to
- * @param {string} id - Team name
+ * @param {string} id - Team ID or Name
  */
 export async function getTeamStandings(id) {
   try {
     const team = await getTeamById(id);
-    // Find competition standings or return a simulated standing for the team
-    return {
-      rank: id === 'ريال مدريد' || id === 'الهلال' ? 1 : 2,
-      points: id === 'ريال مدريد' ? 93 : id === 'الهلال' ? 89 : 77,
-      form: ['W', 'W', 'D', 'W', 'W']
-    };
+    if (!team || !team.id) return { rank: 1, points: 0, form: [] };
+
+    // Find custom standings from standard leagues that this team plays in
+    // Query standings for Saudi (307) or La Liga (140) or EPL (39)
+    let leagueId = 307; // Saudi by default for Middle East
+    if (team.country === 'Spain') leagueId = 140;
+    if (team.country === 'England') leagueId = 39;
+    if (team.country === 'Italy') leagueId = 135;
+    if (team.country === 'France') leagueId = 61;
+
+    const response = await apiClient.get('/standings', {
+      params: { league: leagueId, season: new Date().getFullYear().toString() }
+    });
+
+    const stands = response.data?.response?.[0]?.league?.standings?.[0] || [];
+    const teamRow = stands.find((s: any) => String(s.team.id) === String(team.id));
+
+    if (teamRow) {
+      return {
+        rank: teamRow.rank,
+        points: teamRow.points,
+        form: teamRow.form ? teamRow.form.split('') : [],
+        played: teamRow.all?.played,
+        win: teamRow.all?.win,
+        draw: teamRow.all?.draw,
+        lose: teamRow.all?.lose
+      };
+    }
+
+    return { rank: 1, points: 0, form: [] };
   } catch (err) {
-    return { rank: 2, points: 54, form: ['W', 'D', 'W', 'W', 'L'] };
+    console.error('getTeamStandings Error:', err);
+    return { rank: 1, points: 0, form: [] };
   }
 }
 
 /**
- * Fetch squad database of the team
- * @param {string} id - Team name
+ * Fetch real squad database of the team via direct API-Football players list. No mock generators.
+ * @param {string} id - Team ID or name
  */
 export async function getTeamPlayers(id) {
-  const decodedName = decodeURIComponent(id);
-  const foundSquad = TOP_TEAM_SQUADS[decodedName];
-  if (foundSquad) return foundSquad;
+  try {
+    const team = await getTeamById(id);
+    if (!team || !team.id) return [];
 
-  // Otherwise, return a beautifully randomized squad matching the team name
-  const positions = ['حارس مرمى', 'مدافع', 'مدافع', 'وسط', 'وسط', 'مهاجم', 'مهاجم', 'وسط هجومي', 'ظهير أيمن', 'ظهير أيسر'];
-  const nationalities = ['المغرب', 'السعودية', 'البرازيل', 'إسبانيا', 'إنجلترا', 'الأرجنتين', 'فرنسا'];
-  const firstNames = ['فهد', 'عبد العزيز', 'كارلوس', 'سالم', 'أحمد', 'محمد', 'ماركو', 'لوكاس', 'أندريه', 'سفيان'];
-  const lastNames = ['الدوسري', 'سيلفا', 'العامري', 'غوميز', 'الحربي', 'مارتينيز', 'العتيبي', 'جونز', 'القحطاني'];
+    const response = await apiClient.get('/players/squads', {
+      params: { team: team.id }
+    });
 
-  const dynamicSquad = Array.from({ length: 11 }, (_, index) => {
-    const fn = firstNames[index % firstNames.length];
-    const ln = lastNames[(index + 3) % lastNames.length];
-    const pos = positions[index % positions.length];
-    const nat = nationalities[(index + 1) % nationalities.length];
+    const rawSquad = response.data?.response?.[0]?.players || [];
+    if (rawSquad.length === 0) {
+      // Fallback search in /players
+      const playersRes = await apiClient.get('/players', {
+        params: { team: team.id, season: '2025' }
+      });
+      const list = playersRes.data?.response || [];
+      return list.map((item: any) => ({
+        name: item.player.name,
+        position: item.statistics?.[0]?.games?.position || 'وسط',
+        number: item.statistics?.[0]?.games?.number || 9,
+        nationality: item.player.nationality || 'غير معروف'
+      }));
+    }
 
-    return {
-      name: `${fn} ${ln}`,
-      position: pos,
-      number: index + 1 === 1 ? 1 : 4 + index * 3,
-      nationality: nat
-    };
-  });
+    return rawSquad.map((item: any) => {
+      let arabicPos = item.position;
+      if (item.position === 'Defender') arabicPos = 'مدافع';
+      else if (item.position === 'Goalkeeper') arabicPos = 'حارس مرمى';
+      else if (item.position === 'Midfielder') arabicPos = 'وسط';
+      else if (item.position === 'Attacker') arabicPos = 'مهاجم';
 
-  return dynamicSquad;
+      return {
+        id: item.id,
+        name: item.name,
+        position: arabicPos,
+        number: item.number || 10,
+        nationality: 'لاعب الفريق الحقيقي'
+      };
+    });
+  } catch (err) {
+    console.error('getTeamPlayers Error:', err);
+    throw err;
+  }
 }

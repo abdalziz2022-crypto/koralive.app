@@ -121,9 +121,20 @@ export function handleFirestoreError(error: unknown, operationType: OperationTyp
     },
     operationType,
     path
+  };
+  
+  console.warn('[Firestore Graceful Recovery] Firestore Error Occurred:', JSON.stringify(errInfo));
+  
+  // Only throw synchronous exceptions for mutative/write operations where callers need to catch/display state.
+  // Querying/Snapshot listening (GET/LIST) should fall back cleanly rather than crashing the React cycle.
+  if (
+    operationType === OperationType.CREATE || 
+    operationType === OperationType.UPDATE || 
+    operationType === OperationType.DELETE || 
+    operationType === OperationType.WRITE
+  ) {
+    throw new Error(JSON.stringify(errInfo));
   }
-  console.error('Firestore Error: ', JSON.stringify(errInfo));
-  throw new Error(JSON.stringify(errInfo));
 }
 
 // Connection test

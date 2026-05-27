@@ -1,71 +1,95 @@
-import rapidApiClient, { RAPID_API_KEY } from './rapidApiClient';
-import { mockMatches } from '../../lib/mockData';
+import apiClient, { getActiveApiKey } from '../../api/apiClient';
 
 export const searchService = {
   /**
-   * Performs a global search across local and remote providers
+   * Performs a global search across local and remote providers using ONLY active real endpoints
    */
   async searchGlobal(query) {
-    const term = String(query).trim().toLowerCase();
-    if (!term) return { teams: [], players: [], matches: [], leagues: [] };
+    const term = String(query).trim();
+    if (!term || term.length < 3) return { teams: [], players: [], matches: [], leagues: [] };
 
-    let results = {
+    const key = getActiveApiKey();
+    if (!key) {
+      throw new Error('NO_API_KEY: الرجاء تهيئة مفتاح API-Football لمزامنة عمليات البحث المباشرة.');
+    }
+
+    const results = {
       teams: [],
       players: [],
       matches: [],
       leagues: []
     };
 
-    // Filter local mock matches
-    results.matches = mockMatches.filter(m => 
-      m.homeTeam.toLowerCase().includes(term) || 
-      m.awayTeam.toLowerCase().includes(term) ||
-      m.league.toLowerCase().includes(term)
-    ).slice(0, 5);
+    try {
+      // 1. Query Teams matching name
+      const teamRes = await apiClient.get('/teams', { params: { search: term } });
+      const remoteTeams = teamRes.data?.response || [];
+      results.teams = remoteTeams.slice(0, 10).map(item => ({
+        id: item.team.id,
+        name: item.team.name,
+        logo: item.team.logo,
+        country: item.team.country
+      }));
+    } catch (err) {
+      console.warn('Teams search failed or rate-limited:', err);
+    }
 
-    // Some default mock categories
-    const mockTeams = [
-      { id: 33, name: 'ريال مدريد', logo: 'https://media.api-sports.io/football/teams/541.png', country: 'إسبانيا' },
-      { id: 34, name: 'برشلونة', logo: 'https://media.api-sports.io/football/teams/529.png', country: 'إسبانيا' },
-      { id: 35, name: 'الهلال', logo: 'https://media.api-sports.io/football/teams/33.png', country: 'السعودية' },
-      { id: 36, name: 'النصر', logo: 'https://media.api-sports.io/football/teams/33.png', country: 'السعودية' }
-    ];
+    try {
+      // 2. Query Players matching name
+      const playerRes = await apiClient.get('/players', { params: { search: term } });
+      const remotePlayers = playerRes.data?.response || [];
+      results.players = remotePlayers.slice(0, 10).map(item => ({
+        id: item.player.id,
+        name: item.player.name,
+        photo: item.player.photo || `https://media.api-sports.io/football/players/${item.player.id}.png`,
+        team: item.statistics?.[0]?.team?.name || 'غير معروف',
+        teamId: item.statistics?.[0]?.team?.id
+      }));
+    } catch (err) {
+      console.warn('Players search failed or rate-limited:', err);
+    }
 
-    results.teams = mockTeams.filter(t => t.name.toLowerCase().includes(term));
+    try {
+      // 3. Query Leagues list matching name
+      const leagueRes = await apiClient.get('/leagues', { params: { search: term } });
+      const remoteLeagues = leagueRes.data?.response || [];
+      results.leagues = remoteLeagues.slice(0, 6).map(item => ({
+        id: item.league.id,
+        name: item.league.name,
+        logo: item.league.logo,
+        country: item.league.country
+      }));
+    } catch (err) {
+      console.warn('Leagues search failed or rate-limited:', err);
+    }
 
-    const mockPlayers = [
-      { id: 44, name: 'سالم الدوسري', team: 'الهلال', photo: 'https://media.api-sports.io/football/players/44.png' },
-      { id: 45, name: 'عبد الرحمن غريب', team: 'النصر', photo: 'https://media.api-sports.io/football/players/44.png' },
-      { id: 46, name: 'ياسين بونو', team: 'الهلال', photo: 'https://media.api-sports.io/football/players/44.png' }
-    ];
-
-    results.players = mockPlayers.filter(p => p.name.toLowerCase().includes(term));
-
-    const mockLeagues = [
-      { id: 307, name: 'الدوري السعودي', emoji: '🇸🇦', country: 'السعودية' },
-      { id: 140, name: 'الدوري الإسباني', emoji: '🇪🇸', country: 'إسبانيا' },
-      { id: 39, name: 'الدوري الإنجليزي', emoji: '🏴󠁧󠁢󠁥󠁮󠁧󠁿', country: 'إنجلترا' }
-    ];
-
-    results.leagues = mockLeagues.filter(l => l.name.toLowerCase().includes(term));
-
-    // If key is present, we attempt to enrich from the live API
-    if (RAPID_API_KEY) {
-      try {
-        // Query Teams
-        const teamRes = await rapidApiClient.get('/teams', { params: { search: query } });
-        const remoteTeams = teamRes.data?.response || [];
-        if (remoteTeams.length > 0) {
-          results.teams = remoteTeams.slice(0, 5).map(item => ({
-            id: item.team.id,
-            name: item.team.name,
-            logo: item.team.logo,
-            country: item.team.country
-          }));
-        }
-      } catch (err) {
-        console.warn('Remote search query on RapidAPI bypassed due to rate limit.', err);
-      }
+    // Since searching matches directly on API-Football requires specific queries (date, live, league, team, etc.),
+    // we search globally in today's active matches that match the player query.
+    try {
+      const response = await apiClient.get('/fixtures', {
+        params: { live: 'all' }
+      });
+      const matches = response.data?.response || [];
+      const termLower = term.toLowerCase();
+      results.matches = matches.filter((item: any) => 
+        item.teams?.home?.name?.toLowerCase().includes(termLower) ||
+        item.teams?.away?.name?.toLowerCase().includes(termLower) ||
+        item.league?.name?.toLowerCase().includes(termLower)
+      ).slice(0, 10).map((item: any) => ({
+        id: String(item.fixture.id),
+        homeTeam: item.teams.home.name,
+        awayTeam: item.teams.away.name,
+        homeLogo: item.teams.home.logo,
+        awayLogo: item.teams.away.logo,
+        homeScore: item.goals.home,
+        awayScore: item.goals.away,
+        status: item.fixture.status.short,
+        minute: item.fixture.status.elapsed,
+        league: item.league.name,
+        startTime: item.fixture.date
+      }));
+    } catch (err) {
+      console.warn('Matches live global search fallback failed:', err);
     }
 
     return results;

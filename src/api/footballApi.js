@@ -1,50 +1,62 @@
-import apiClient from './apiClient';
+import { matchService } from '../services/matchService';
+import { standingsService } from '../services/standingsService';
 
 /**
  * Fetch matches that are currently LIVE.
- * Endpoint: /matches?status=LIVE
  */
 export async function getLiveMatches() {
-  const response = await apiClient.get('/matches?status=LIVE');
-  return response.data;
+  try {
+    return await matchService.getLiveMatches();
+  } catch (error) {
+    console.error('getLiveMatches compatibility error:', error);
+    return [];
+  }
 }
 
 /**
  * Fetch today's matches.
- * Endpoint: /matches
  */
 export async function getTodayMatches() {
-  const response = await apiClient.get('/matches');
-  return response.data;
+  try {
+    return await matchService.getFixtures();
+  } catch (error) {
+    console.error('getTodayMatches compatibility error:', error);
+    return [];
+  }
 }
 
 /**
  * Fetch details of a specific match by ID.
- * Endpoint: /matches/{id}
  */
 export async function getMatchById(id) {
-  const response = await apiClient.get(`/matches/${id}`);
-  return response.data;
+  try {
+    return await matchService.getMatchDetails(String(id));
+  } catch (error) {
+    console.error(`getMatchById compatibility error for ${id}:`, error);
+    return null;
+  }
 }
 
 /**
  * Fetch league standings for a specific competition ID.
- * Endpoint: /competitions/{id}/standings
  */
 export async function getLeagueStandings(competitionId) {
-  const response = await apiClient.get(`/competitions/${competitionId}/standings`);
-  return response.data;
+  try {
+    return await standingsService.getStandings(competitionId);
+  } catch (error) {
+    console.error(`getLeagueStandings compatibility error for ${competitionId}:`, error);
+    return { standings: [] };
+  }
 }
 
 /**
  * Test connectivity and API responses.
- * Performs a request to the live matches endpoint.
  */
 export async function testFootballApi() {
   try {
-    const response = await apiClient.get('/matches?status=LIVE');
-    console.log(' football-data.org response data:', response.data);
-    return response.data;
+    const response = await matchService.getLiveMatches();
+    console.log('API-Football validation response data:', response);
+    return response;
   } catch (error) {
     console.error('Error during testFootballApi:', error);
     throw error;

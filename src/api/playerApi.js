@@ -1,170 +1,117 @@
-import { db } from '../firebase';
-import { collection, getDocs, query, where } from 'firebase/firestore';
-import { mockMatches } from '../lib/mockData';
-
-// High fidelity database of major world-class players
-const FAMOUS_PLAYERS = {
-  'محمد صلاح': {
-    name: 'محمد صلاح',
-    team: 'ليفربول',
-    position: 'جناح أيمن / مهاجم',
-    number: 11,
-    nationality: 'جمهورية مصر العربية 🇪🇬',
-    age: 33,
-    height: '175 سم',
-    foot: 'اليسرى',
-    photo: 'https://api.dicebear.com/7.x/avataaars/svg?seed=Salah&eyebrows=default&eyes=wink&mouth=smile',
-    stats: { appearances: 37, goals: 25, assists: 14, yellowCards: 2, redCards: 0, minutesPlayed: 3120 }
-  },
-  'كريستيانو رونالدو': {
-    name: 'كريستيانو رونالدو',
-    team: 'النصر',
-    position: 'مهاجم صريح',
-    number: 7,
-    nationality: 'البرتغال 🇵🇹',
-    age: 41,
-    height: '187 سم',
-    foot: 'اليمنى',
-    photo: 'https://api.dicebear.com/7.x/avataaars/svg?seed=Ronaldo&eyebrows=flatNatural&eyes=default&mouth=smile',
-    stats: { appearances: 31, goals: 35, assists: 11, yellowCards: 4, redCards: 0, minutesPlayed: 2790 }
-  },
-  'جود بيلينجهام': {
-    name: 'جود بيلينجهام',
-    team: 'ريال مدريد',
-    position: 'وسط هجومي',
-    number: 5,
-    nationality: 'إنجلترا 🏴󠁧󠁢󠁥󠁮󠁧󠁿',
-    age: 22,
-    height: '186 سم',
-    foot: 'اليمنى',
-    photo: 'https://api.dicebear.com/7.x/avataaars/svg?seed=Bellingham&eyebrows=default&eyes=default&mouth=smile',
-    stats: { appearances: 28, goals: 19, assists: 6, yellowCards: 5, redCards: 1, minutesPlayed: 2430 }
-  },
-  'فينيسيوس جونيور': {
-    name: 'فينيسيوس جونيور',
-    team: 'ريال مدريد',
-    position: 'جناح أيسر / مهاجم',
-    number: 7,
-    nationality: 'البرازيل 🇧🇷',
-    age: 25,
-    height: '176 سم',
-    foot: 'اليمنى',
-    photo: 'https://api.dicebear.com/7.x/avataaars/svg?seed=Vini&eyebrows=upDirectional&eyes=default&mouth=smile',
-    stats: { appearances: 26, goals: 15, assists: 5, yellowCards: 7, redCards: 0, minutesPlayed: 2110 }
-  },
-  'سالم الدوسري': {
-    name: 'سالم الدوسري',
-    team: 'الهلال',
-    position: 'جناح أيسر',
-    number: 29,
-    nationality: 'المملكة العربية السعودية 🇸🇦',
-    age: 34,
-    height: '171 سم',
-    foot: 'اليمنى',
-    photo: 'https://api.dicebear.com/7.x/avataaars/svg?seed=Salem&eyebrows=default&eyes=default&mouth=smile',
-    stats: { appearances: 29, goals: 14, assists: 8, yellowCards: 3, redCards: 0, minutesPlayed: 2450 }
-  },
-  'ياسين بونو': {
-    name: 'ياسين بونو',
-    team: 'الهلال',
-    position: 'حارس مرمى',
-    number: 37,
-    nationality: 'المغرب 🇲🇦',
-    age: 35,
-    height: '192 سم',
-    foot: 'اليسرى',
-    photo: 'https://api.dicebear.com/7.x/avataaars/svg?seed=Bounou&eyebrows=default&eyes=default&mouth=smile',
-    stats: { appearances: 31, goals: 0, assists: 0, yellowCards: 1, redCards: 0, minutesPlayed: 2790 }
-  }
-};
+import apiClient from './apiClient';
+import { playerService } from '../services/playerService';
+import { matchService } from '../services/matchService';
 
 /**
- * Fetch player basic details by name or custom id key
- * @param {string} id - The player identifier/name
+ * Fetch player basic details by numeric id or name securely via real API-Football endpoints. No mock generators.
+ * @param {string|number} id - Player identifier or search query name
  */
 export async function getPlayerById(id) {
-  const decodedName = decodeURIComponent(id).trim();
+  const query = String(id).trim();
+  const isNumeric = /^\d+$/.test(query);
 
-  // 1. Direct matched world-class player
-  const preset = FAMOUS_PLAYERS[decodedName];
-  if (preset) return preset;
-
-  // 2. Generate on-the-fly random stats if name is dynamic or from live match roster
-  const teams = ['الهلال', 'النصر', 'ريال مدريد', 'برشلونة', 'ليفربول', 'مانشستر سيتي', 'الاتفاق', 'الاتحاد'];
-  const positions = ['وسط هجومي', 'مهاجم صريح', 'مدافع قلب', 'ظهير طائر', 'حارس مرمى أمين'];
-  const feet = ['اليمنى', 'اليسرى', 'كلتا القدمين'];
-  const countries = ['المملكة العربية السعودية 🇸🇦', 'مصر 🇪🇬', 'البرازيل 🇧🇷', 'المغرب 🇲🇦', 'الجزائر 🇩🇿', 'فرنسا 🇫🇷', 'إسبانيا 🇪🇸'];
-
-  const hash = decodedName.split('').reduce((acc, char) => acc + char.charCodeAt(0), 0);
-  const team = teams[hash % teams.length];
-  const position = positions[hash % positions.length];
-  const number = (hash % 99) + 1;
-  const age = 20 + (hash % 18);
-  const height = `${170 + (hash % 25)} سم`;
-  const foot = feet[hash % feet.length];
-  const nationality = countries[hash % countries.length];
-
-  return {
-    name: decodedName,
-    team: team,
-    position: position,
-    number: number,
-    nationality: nationality,
-    age: age,
-    height: height,
-    foot: foot,
-    photo: `https://api.dicebear.com/7.x/avataaars/svg?seed=${encodeURIComponent(decodedName)}&accessoriesProbability=20`,
-    stats: {
-      appearances: 20 + (hash % 15),
-      goals: position.includes('مهاجم') ? 10 + (hash % 20) : position.includes('وسط') ? 2 + (hash % 10) : 0,
-      assists: position.includes('حارس') ? 0 : 3 + (hash % 12),
-      yellowCards: hash % 6,
-      redCards: hash % 2 === 0 ? 0 : 1,
-      minutesPlayed: (20 + (hash % 15)) * 80
+  try {
+    if (isNumeric) {
+      // 1. Fetch by numeric ID
+      const res = await playerService.getPlayerDetails(query);
+      return {
+        name: res.name,
+        team: res.teamName || 'نادي غير معرف',
+        teamId: res.teamId,
+        position: res.position || 'لاعب وسط',
+        photo: res.photo || `https://media.api-sports.io/football/players/${query}.png`,
+        nationality: res.nationality || 'غير محدد',
+        age: res.age || 'غير محدد',
+        height: res.height || 'غير محدد',
+        weight: res.weight || 'غير محدد',
+        injured: res.injured || false,
+        stats: {
+          appearances: res.appearances || 0,
+          goals: res.goals || 0,
+          assists: res.assists || 0,
+          yellowCards: res.yellowCards || 0,
+          redCards: res.redCards || 0,
+          minutesPlayed: res.minutesPlayed || 0
+        }
+      };
+    } else {
+      // 2. Resolve by real Name Search
+      const response = await apiClient.get('/players', {
+        params: { search: query }
+      });
+      const firstResult = response.data?.response?.[0];
+      if (!firstResult) {
+        throw new Error(`PLAYER_NOT_FOUND: لم يتم العثور على لاعب حقيقي باسم "${query}" في قاعدة بيانات الدوري المباشرة.`);
+      }
+      
+      const p = firstResult.player;
+      const s = firstResult.statistics?.[0] || {};
+      return {
+        name: p.name,
+        team: s.team?.name || 'غير معروف',
+        teamId: s.team?.id,
+        position: s.games?.position || 'وسط',
+        photo: p.photo || `https://media.api-sports.io/football/players/${p.id}.png`,
+        nationality: p.nationality || 'غير محدد',
+        age: p.age || 'غير محدد',
+        height: p.height || 'غير محدد',
+        weight: p.weight || 'غير محدد',
+        stats: {
+          appearances: s.games?.appearences || 0,
+          goals: s.goals?.total || 0,
+          assists: s.goals?.assists || 0,
+          yellowCards: s.cards?.yellow || 0,
+          redCards: s.cards?.red || 0,
+          minutesPlayed: s.games?.minutes || 0
+        }
+      };
     }
-  };
+  } catch (err) {
+    console.error('getPlayerById Error:', err);
+    throw err;
+  }
 }
 
 /**
- * Fetch matches belonging to the player's team (recent status)
- * @param {string} id - Player identifier/name
+ * Fetch real recent fixtures belonging to the player's team.
+ * @param {string|number} id - Player identifier or name
  */
 export async function getPlayerMatches(id) {
   try {
     const player = await getPlayerById(id);
-    const teamName = player.team;
-
-    // Fetch all available matches directly
-    const querySnapshot = await getDocs(collection(db, 'matches'));
-    let matches = [];
-
-    if (!querySnapshot.empty) {
-      matches = querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-    } else {
-      matches = mockMatches;
+    if (!player || !player.teamId) {
+      return [];
     }
 
-    // Filter matches involving player's team
-    const teamMatches = matches.filter(m => 
-      m.homeTeam === teamName || m.awayTeam === teamName
+    // Query 5 real fixtures for this team
+    const fixtures = await matchService.getFixtures({
+      leagueId: undefined, // all leagues
+      season: String(new Date().getFullYear())
+    });
+
+    // Filter matches involving player's real team ID
+    const teamMatches = fixtures.filter(m => 
+      String(m.homeTeam.id) === String(player.teamId) || 
+      String(m.awayTeam.id) === String(player.teamId)
     );
 
-    if (teamMatches.length === 0) {
-      return mockMatches.filter(m => m.homeTeam === teamName || m.awayTeam === teamName || m.league === 'الدوري الإسباني');
-    }
-
-    return teamMatches.sort((a, b) => new Date(b.startTime) - new Date(a.startTime));
+    return teamMatches;
   } catch (err) {
-    console.error('Error fetching player matches:', err);
-    return mockMatches;
+    console.error('getPlayerMatches Error:', err);
+    throw err;
   }
 }
 
 /**
- * Fetch stats for the player
- * @param {string} id 
+ * Fetch real stats for the player
+ * @param {string|number} id 
  */
 export async function getPlayerStats(id) {
-  const player = await getPlayerById(id);
-  return player.stats;
+  try {
+    const player = await getPlayerById(id);
+    return player.stats;
+  } catch (err) {
+    console.error('getPlayerStats Error:', err);
+    throw err;
+  }
 }

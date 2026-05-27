@@ -23,6 +23,7 @@ import MatchTestPage from './pages/MatchTestPage';
 import ApiFootballTestPage from './pages/ApiFootballTestPage';
 import NewsAggregatorPage from './pages/NewsAggregatorPage';
 import BrandSystemPage from './pages/BrandSystemPage';
+import FootballDebugScreen from './pages/FootballDebugScreen';
 
 import LeaguesPage from './pages/LeaguesPage';
 import LeaguePage from './pages/LeaguePage';
@@ -80,6 +81,7 @@ export default function App() {
                     <Route path="/apifootball-test" element={<ApiFootballTestPage />} />
                     <Route path="/news" element={<NewsAggregatorPage />} />
                     <Route path="/brand" element={<BrandSystemPage />} />
+                    <Route path="/football-debug" element={<FootballDebugScreen />} />
                   </Routes>
                 </MainLayout>
               </Router>

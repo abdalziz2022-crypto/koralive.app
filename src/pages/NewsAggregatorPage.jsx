@@ -177,7 +177,7 @@ export default function NewsAggregatorPage() {
       setLoadingSources(true);
       const res = await rssNewsService.getSources();
       if (res && res.success) {
-        setSources(res.data);
+        setSources(Array.isArray(res.data) ? res.data : []);
       }
     } catch (err) {
       console.error('Sources load error:', err);
@@ -203,13 +203,14 @@ export default function NewsAggregatorPage() {
       });
 
       if (res && res.success) {
+        const dataArray = Array.isArray(res.data) ? res.data : [];
         if (append) {
-          setArticles(prev => [...prev, ...res.data]);
+          setArticles(prev => [...(Array.isArray(prev) ? prev : []).filter(Boolean), ...dataArray]);
         } else {
-          setArticles(res.data);
+          setArticles(dataArray);
         }
-        setTotalArticles(res.total);
-        setHasMore(res.data.length === 12 && (pageToLoad * 12) < res.total);
+        setTotalArticles(res.total || 0);
+        setHasMore(dataArray.length === 12 && (pageToLoad * 12) < (res.total || 0));
       }
     } catch (err) {
       setNewsError(err.message || 'حدث خطأ أثناء جلب تغذية الأخبار المدمجة.');
@@ -223,7 +224,7 @@ export default function NewsAggregatorPage() {
     try {
       const res = await rssNewsService.getLatestArticles(8);
       if (res && res.success) {
-        setLatestHeadlines(res.data);
+        setLatestHeadlines(Array.isArray(res.data) ? res.data : []);
       }
     } catch (_) {}
   };

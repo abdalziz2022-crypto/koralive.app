@@ -25,11 +25,28 @@ import {
   Eye,
   Settings,
   AlertOctagon,
-  BookOpen
+  BookOpen,
+  LayoutGrid,
+  Heart,
+  HelpCircle,
+  RefreshCw
 } from 'lucide-react';
 
+// Import our newly created Korea90 V2 Reusable Component System
+import Button from '../components/ui/Button';
+import Card from '../components/ui/Card';
+import SectionHeader from '../components/ui/SectionHeader';
+import Badge from '../components/ui/Badge';
+import UiTabs from '../components/ui/Tabs';
+import SearchBar from '../components/ui/SearchBar';
+import EmptyState from '../components/ui/EmptyState';
+import ErrorState from '../components/ui/ErrorState';
+import MatchCard from '../components/ui/MatchCard';
+import NewsCard from '../components/ui/NewsCard';
+import { MatchCardSkeleton, NewsCardSkeleton } from '../components/ui/Skeletons';
+
 export default function BrandSystemPage() {
-  const [activeTab, setActiveTab] = useState<'brand' | 'colors' | 'typography' | 'logos' | 'voice' | 'pwa'>('brand');
+  const [activeTab, setActiveTab] = useState<'brand' | 'colors' | 'typography' | 'logos' | 'voice' | 'pwa' | 'components'>('brand');
   const [selectedOption, setSelectedOption] = useState<'A' | 'B' | 'C'>('A');
   const [simulatedNotify, setSimulatedNotify] = useState<string | null>(null);
 
@@ -121,6 +138,7 @@ export default function BrandSystemPage() {
           { id: 'logos', label: 'الشعارات والأيقونات', icon: Award },
           { id: 'voice', label: 'نبرة الصوت والتنبيهات', icon: Volume2 },
           { id: 'pwa', label: 'إستراتيجية النشر APK & PWA', icon: Smartphone },
+          { id: 'components', label: 'المكونات البرمجية V2', icon: LayoutGrid },
         ].map(tab => {
           const Icon = tab.icon;
           const isActive = activeTab === tab.id;
@@ -484,6 +502,205 @@ export default function BrandSystemPage() {
                         <p className="text-[11px] text-gray-500 font-medium leading-normal">الواجهة تدعم تفعيل المحتويات بنسب 100% وحماية المساحات الآمنة للهواتف ذات الشاشات المنحنية أو شريط الكاميرا الأمامي (Safe Area Insets).</p>
                       </div>
                     </div>
+                  </div>
+                </div>
+              </motion.div>
+            )}
+
+            {/* INTEGRATED REUSABLE COMPONENT SHOWCASE */}
+            {activeTab === 'components' && (
+              <motion.div
+                key="components"
+                initial={{ opacity: 0, y: 15 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -15 }}
+                className="space-y-8"
+              >
+                {/* 1. UX FLOW WIREFRAMES SCHEMATIC */}
+                <div className="glass p-6 md:p-8 rounded-3xl space-y-6">
+                  <SectionHeader 
+                    title="1. مخطط تدفق المستخدم الرياضي (UX Flow Wireframe)" 
+                    subtitle="كيف يتفاعل المشجع مع الشاشات والأزرار الموحدة" 
+                    icon={<Compass size={18} />}
+                  />
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                    <div className="bg-background/80 border border-border/10 p-4 rounded-2xl space-y-2">
+                      <div className="flex items-center gap-1.5 text-xs font-black text-primary">
+                        <span className="w-4 h-4 rounded-full bg-primary/20 text-primary flex items-center justify-center font-mono text-[10px]">1</span>
+                        <span>الرئيسية (Home Feed & Live)</span>
+                      </div>
+                      <p className="text-[11px] text-gray-400 font-bold leading-relaxed">
+                        بطاقة البث الحي تصحبها قائمة المباريات المباشرة اليومية. تفعيل زر البحث يطلق محقق البحث الفوري في الأعلى.
+                      </p>
+                    </div>
+
+                    <div className="bg-background/80 border border-border/10 p-4 rounded-2xl space-y-2">
+                      <div className="flex items-center gap-1.5 text-xs font-black text-yellow-500">
+                        <span className="w-4 h-4 rounded-full bg-yellow-500/20 text-yellow-500 flex items-center justify-center font-mono text-[10px]">2</span>
+                        <span>تفاصيل اللقاء والملعب</span>
+                      </div>
+                      <p className="text-[11px] text-gray-400 font-bold leading-relaxed">
+                        تنظيم تفاعلي بالـ Tabs الموحدة. مخطط الملعب واصطفاف التكتيك يعتمد على بطاقة اللاعب لضمان مرونة التصميم المتكامل.
+                      </p>
+                    </div>
+
+                    <div className="bg-background/80 border border-border/10 p-4 rounded-2xl space-y-2">
+                      <div className="flex items-center gap-1.5 text-xs font-black text-[#00DF82]">
+                        <span className="w-4 h-4 rounded-full bg-[#00DF82]/20 text-[#00DF82] flex items-center justify-center font-mono text-[10px]">3</span>
+                        <span>قرّاء الأخبار والتعتيم</span>
+                      </div>
+                      <p className="text-[11px] text-gray-400 font-bold leading-relaxed">
+                        التحويل الفوري لوضع القارئ المريح، والتحكم بسيبيا (Sepia) وتعتيم السطوع للحبر التعبيري المسائي والنسل المريح.
+                      </p>
+                    </div>
+                  </div>
+                </div>
+
+                {/* 2. CORE COMPONENT PLAYGROUND: BUTTONS */}
+                <div className="glass p-6 md:p-8 rounded-3xl space-y-4">
+                  <SectionHeader 
+                    title="2. رموز الأزرار والتصاميم (Standard Button System)" 
+                    subtitle="مكتبة الأزرار الموحدة عبر جميع مراحل كورنا 90 V2" 
+                    icon={<Zap size={18} />}
+                  />
+                  <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 p-5 bg-background border border-border/10 rounded-2xl">
+                    <Button variant="primary">رئيسي نيون</Button>
+                    <Button variant="secondary">مساعد هادئ</Button>
+                    <Button variant="ghost">زر شفاف</Button>
+                    <Button variant="danger">عنصر إنذار</Button>
+                  </div>
+                </div>
+
+                {/* 3. CONTAINERS & BADGES */}
+                <div className="glass p-6 md:p-8 rounded-3xl space-y-5">
+                  <SectionHeader 
+                    title="3. بطاقات الحاوية والشارات (Card & Badge Showcase)" 
+                    subtitle="استعراض طائرات الألوان للتصنيف الفوري" 
+                    icon={<Palette size={18} />}
+                  />
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                    <Card variant="elevated" className="p-4 space-y-2">
+                      <span className="text-xs font-black text-rose-500 block">مرتفع Elevated</span>
+                      <p className="text-[11px] text-gray-400 font-bold leading-relaxed">بطاقة مع ظلال مميزة لإعطاء عمق وتصنيف بصري.</p>
+                    </Card>
+                    <Card variant="outlined" className="p-4 space-y-2">
+                      <span className="text-xs font-black text-[#00DF82] block">محدد الحدود Outlined</span>
+                      <p className="text-[11px] text-gray-400 font-bold leading-relaxed">الحدود الكلاسيكية رقيقة الحبر والمصقولة.</p>
+                    </Card>
+                    <Card variant="flat" className="p-4 space-y-2">
+                      <span className="text-xs font-black text-yellow-500 block">مسطح Flat Container</span>
+                      <p className="text-[11px] text-gray-400 font-bold leading-relaxed">خلفية معتدلة لتقليل الاكتظاظ البصري للهياكل.</p>
+                    </Card>
+                  </div>
+
+                  <div className="flex flex-wrap gap-2.5 pt-2 justify-center">
+                    <Badge variant="live" pulse={true}>مباشر الآن</Badge>
+                    <Badge variant="success">فوز</Badge>
+                    <Badge variant="warning">تحذير</Badge>
+                    <Badge variant="info">مباراة غداً</Badge>
+                    <Badge variant="danger">بطاقة حمراء</Badge>
+                    <Badge variant="muted">منتهية</Badge>
+                  </div>
+                </div>
+
+                {/* 4. SEARCH & INPUT */}
+                <div className="glass p-6 md:p-8 rounded-3xl space-y-4">
+                  <SectionHeader 
+                    title="4. أشرطة البحث والتحكم (Filter & Search)" 
+                    subtitle="سلس، سريع، ويتطابق مع RTL والاتجاهات العربية" 
+                    icon={<Search size={18} />}
+                  />
+                  <SearchBar value="" onChange={() => {}} placeholder="تصفح محاكي البحث العربي..." />
+                </div>
+
+                {/* 5. LIVE SPORTS MATCHES & NEWS MVP */}
+                <div className="glass p-6 md:p-8 rounded-3xl space-y-6">
+                  <SectionHeader 
+                    title="5. المكونات الأساسية للرياضة (Matches & News Card Feed)" 
+                    subtitle="مستلهم من SofaScore & ESPN بكفاءة عالية وبدون فوضى" 
+                    icon={<LayoutGrid size={18} />}
+                  />
+                  
+                  {/* Match Feed Preview */}
+                  <div className="space-y-3.5">
+                    <span className="text-xs font-black text-primary block">● محاكاة بطاقة المباراة (Match Card MVP)</span>
+                    <MatchCard 
+                      match={{
+                        id: 'apf-101',
+                        homeTeam: { name: 'الهلال السعودي', logo: 'https://media.api-sports.io/football/teams/2939.png' },
+                        awayTeam: { name: 'النصر السعودي', logo: 'https://media.api-sports.io/football/teams/2940.png' },
+                        score: { home: 3, away: 1 },
+                        status: { long: 'Second Half', short: '2H', elapsed: 72, extra: null },
+                        league: { name: 'الدوري السعودي للمحترفين - روشن', logo: 'https://media.api-sports.io/football/leagues/307.png' },
+                        isLive: true,
+                        commentator: 'فهد العتيبي',
+                        channel: 'SSC Sports HD 1',
+                        streamingLinks: [1]
+                      }}
+                    />
+                  </div>
+
+                  {/* News Feed Preview */}
+                  <div className="space-y-4 pt-5 border-t border-white/5">
+                    <span className="text-xs font-black text-primary block">● محاكاة بطاقات الأخبار الفورية (News Card Grid & List)</span>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <NewsCard 
+                        variant="grid"
+                        article={{
+                          id: 'ar-1',
+                          title: 'رسمياً: الكشف عن الكأس الجديدة لبطولة كأس السوبر السعودي بتصميم ذهبي مبتكر وعصري',
+                          source: 'الرياضية',
+                          pubDate: new Date().toISOString(),
+                          imageUrl: 'https://images.unsplash.com/photo-1508098682722-e99c43a406b2?auto=format&fit=crop&w=500&q=80',
+                          link: '#'
+                        }}
+                      />
+                      <NewsCard 
+                        variant="list"
+                        article={{
+                          id: 'ar-2',
+                          title: 'في تصريحات مثيرة للجدل.. مدرب ريال مدريد يؤكد جاهزية الملعب واستعدادات تكتيكية لمواجهة الكلاسيكو الناري',
+                          source: 'كورة 90',
+                          pubDate: new Date().toISOString(),
+                          imageUrl: 'https://images.unsplash.com/photo-1540747737956-378724044453?auto=format&fit=crop&w=500&q=80',
+                          link: '#'
+                        }}
+                      />
+                    </div>
+                  </div>
+                </div>
+
+                {/* 6. SYSTEM EMPTY & ERROR SKELETON STATES */}
+                <div className="glass p-6 md:p-8 rounded-3xl space-y-6">
+                  <SectionHeader 
+                    title="6. محاكاة الهياكل والحالات الاستثنائية (Skeletons & System States)" 
+                    subtitle="استقرار تام بوجود محاكي الأحمال ومشاكل الوب" 
+                    icon={<AlertOctagon size={18} />}
+                  />
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+                    <div className="space-y-3">
+                      <span className="text-[10px] text-gray-500 font-bold block">هيكل بطاقة تحميلية (Match Skeleton Layout)</span>
+                      <MatchCardSkeleton />
+                    </div>
+
+                    <div className="space-y-3">
+                      <span className="text-[10px] text-gray-500 font-bold block">هيكل تحميلي للأخبار (News Skeleton Layout)</span>
+                      <NewsCardSkeleton />
+                    </div>
+                  </div>
+
+                  <div className="border-t border-white/5 my-4" />
+
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <EmptyState 
+                      title="لا تتوفر مباريات مباشرة" 
+                      description="جميع منافسات اليوم الكروية انتهت بالفعل. يرجى تصفح تبويب جدول المباريات المقبلة."
+                    />
+
+                    <ErrorState 
+                      title="تعذر الاتصال بمركز المعلومات" 
+                      description="الخادم الرياضي يواجه ضغطاً في الطلبات حالياً. نأسف على هذا الخلل الطارئ."
+                    />
                   </div>
                 </div>
               </motion.div>
