@@ -71,11 +71,11 @@ export const searchService = {
       });
       const matches = response.data?.response || [];
       const termLower = term.toLowerCase();
-      results.matches = matches.filter((item: any) => 
+      results.matches = matches.filter((item) => 
         item.teams?.home?.name?.toLowerCase().includes(termLower) ||
         item.teams?.away?.name?.toLowerCase().includes(termLower) ||
         item.league?.name?.toLowerCase().includes(termLower)
-      ).slice(0, 10).map((item: any) => ({
+      ).slice(0, 10).map((item) => ({
         id: String(item.fixture.id),
         homeTeam: item.teams.home.name,
         awayTeam: item.teams.away.name,

@@ -79,10 +79,10 @@ export default function MatchCard({
       {/* Top Meta: League Name & Status Indicators */}
       <div className="flex items-center justify-between gap-3 mb-4.5">
         <div className="flex items-center gap-2">
-          {match.league?.logo && (
+          {(match.leagueDetails?.logo || match.leagueLogo || (typeof match.league === 'object' && match.league?.logo)) && (
             <img 
-              src={match.league.logo} 
-              alt={typeof match.league === 'object' ? match.league.name : 'الدوري'}
+              src={match.leagueDetails?.logo || match.leagueLogo || (typeof match.league === 'object' ? match.league?.logo : '')} 
+              alt={typeof match.league === 'object' ? match.league.name : (match.league || 'الدوري')}
               className="w-4 h-4 rounded-md object-contain shrink-0"
               referrerPolicy="no-referrer"
             />

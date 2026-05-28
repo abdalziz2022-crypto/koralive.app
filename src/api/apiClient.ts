@@ -1,22 +1,27 @@
 import axios from 'axios';
 
 // Pull keys safely from environmental configuration
-const ENV_API_KEY = import.meta.env.VITE_RAPID_API_KEY || import.meta.env.VITE_API_KEY || '';
+const ENV_API_KEY = 'c68e7851bdbe53f596f0d79299d86d57';
 const NATIVE_HOST = 'v3.football.api-sports.io';
 const PROXY_HOST = 'free-api-live-football-data.p.rapidapi.com';
 
 // Dynamic API Key override (allows secure configuration from the UI)
 export function getActiveApiKey(): string {
-  const localKey = localStorage.getItem('korea90_user_api_key');
-  return localKey || ENV_API_KEY;
+  return ENV_API_KEY;
 }
 
-// Detect if we should route to the RapidAPI Proxy or use Sports API native endpoints
-const isRapidApiProxy = !import.meta.env.VITE_API_BASE_URL || import.meta.env.VITE_API_BASE_URL.includes(PROXY_HOST);
+// Helper to ensure any base URL has a scheme (e.g., https://)
+function formatBaseUrl(url: string | undefined): string | undefined {
+  if (!url) return undefined;
+  const trimmed = url.trim();
+  if (!trimmed.startsWith('http://') && !trimmed.startsWith('https://')) {
+    return `https://${trimmed}`;
+  }
+  return trimmed;
+}
 
-const baseURL = isRapidApiProxy 
-  ? `https://${PROXY_HOST}` 
-  : (import.meta.env.VITE_API_BASE_URL || `https://${NATIVE_HOST}`);
+// Route all client-side requests through our local secure server-side proxy to prevent CORS issues
+const baseURL = '/api/football-api';
 
 export interface ApiLog {
   id: string;
@@ -86,17 +91,47 @@ apiClient.interceptors.request.use((config) => {
   config.headers['x-rapidapi-key'] = currentKey;
   config.headers['x-apisports-key'] = currentKey;
   
-  if (isRapidApiProxy) {
-    config.headers['x-rapidapi-host'] = PROXY_HOST;
-  } else {
+  // Identify key provider and set base URL dynamically
+  const isApiSports = currentKey.length === 32;
+  const isRapidApiFootball = currentKey.length === 50;
+  
+  let host = NATIVE_HOST;
+  let base = `https://${NATIVE_HOST}`;
+  let useProxyTranslation = false;
+
+  if (isApiSports) {
+    host = NATIVE_HOST;
+    base = `https://${NATIVE_HOST}`;
     config.headers['x-apisports-host'] = NATIVE_HOST;
+    delete config.headers['x-rapidapi-host'];
+  } else if (isRapidApiFootball) {
+    host = 'api-football-v1.p.rapidapi.com';
+    base = 'https://api-football-v1.p.rapidapi.com';
+    config.headers['x-rapidapi-host'] = host;
+    delete config.headers['x-apisports-host'];
+    
+    // Add '/v3' prefix dynamically for standard API-Football RapidAPI endpoints
+    const rawUrl = config.url || '';
+    if (!rawUrl.startsWith('/v3/') && rawUrl !== '/v3') {
+      config.url = '/v3/' + rawUrl.replace(/^\//, '');
+    }
+  } else {
+    // If the key is not standard API-Football, fall back to free proxy endpoints
+    host = PROXY_HOST;
+    base = `https://${PROXY_HOST}`;
+    config.headers['x-rapidapi-host'] = PROXY_HOST;
+    delete config.headers['x-apisports-host'];
+    useProxyTranslation = true;
   }
+
+  // Keep using local secure server-side proxy to prevent CORS network errors
+  config.baseURL = '/api/football-api';
   
   const rawUrl = config.url || '';
   const cleanUrl = '/' + rawUrl.replace(/^\//, '');
 
   // Dynamic Free API Endpoint Adapter Layer
-  if (isRapidApiProxy) {
+  if (useProxyTranslation) {
     if (cleanUrl === '/fixtures') {
       const isLive = config.params?.live === 'all';
       const id = config.params?.id;
@@ -167,21 +202,198 @@ const getCacheKey = (url: string, params: any) => {
   return `korea90_real_cache_${url}_${JSON.stringify(params || {})}`;
 };
 
-// Response Interceptor for Logging, Real Data Caching, and Explicit Errors
+// In-memory cache structures
+const memoryCache = new Map<string, { data: any; expiry: number }>();
+const inFlightRequests = new Map<string, Promise<any>>();
+
+// Clear cache helper
+export function clearApiCache() {
+  memoryCache.clear();
+  for (let i = 0; i < localStorage.length; i++) {
+    const key = localStorage.key(i);
+    if (key && key.startsWith('korea90_real_cache_')) {
+      localStorage.removeItem(key);
+      i--;
+    }
+  }
+}
+
+// Calculate appropriate TTL for caching to reduce API-Football rate limit consumption
+function getTTL(url: string, params: any): number {
+  const cleanUrl = '/' + url.replace(/^\//, '');
+  if (cleanUrl.includes('fixtures')) {
+    if (params?.live === 'all') {
+      return 15 * 1000; // 15 seconds for live scores
+    }
+    if (cleanUrl.includes('events') || cleanUrl.includes('statistics') || cleanUrl.includes('lineups')) {
+      return 30 * 1000; // 30 seconds for matches details
+    }
+    return 120 * 1000; // 2 minutes for standard daily fixtures
+  }
+  if (cleanUrl.includes('standings')) {
+    return 1800 * 1000; // 30 minutes for standings
+  }
+  if (cleanUrl.includes('leagues') || cleanUrl.includes('teams') || cleanUrl.includes('players')) {
+    return 3600 * 1000; // 60 minutes for leagues/teams/players info
+  }
+  return 300 * 1000; // 5 minutes default
+}
+
+function getCachedItem(key: string): any | null {
+  const mem = memoryCache.get(key);
+  if (mem && mem.expiry > Date.now()) {
+    return mem.data;
+  }
+  try {
+    const lsItem = localStorage.getItem(key);
+    if (lsItem) {
+      const parsed = JSON.parse(lsItem);
+      if (parsed && parsed.expiry > Date.now()) {
+        memoryCache.set(key, { data: parsed.data, expiry: parsed.expiry });
+        return parsed.data;
+      } else {
+        localStorage.removeItem(key);
+      }
+    }
+  } catch (e) {
+    console.warn('Error reading local cache:', e);
+  }
+  return null;
+}
+
+function setCachedItem(key: string, data: any, ttl: number) {
+  const expiry = Date.now() + ttl;
+  memoryCache.set(key, { data, expiry });
+  try {
+    localStorage.setItem(key, JSON.stringify({ data, expiry }));
+  } catch (e) {
+    console.warn('Failed to serialise cache item:', e);
+  }
+}
+
+const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
+
+async function executeWithRetry(
+  fn: () => Promise<any>, 
+  retriesLeft = 3, 
+  backoffMs = 1500
+): Promise<any> {
+  try {
+    return await fn();
+  } catch (error: any) {
+    const status = error.response?.status;
+    const isRateLimit = status === 429 || (error.response?.data?.errors && JSON.stringify(error.response?.data?.errors).includes('limit'));
+    const isServerError = status >= 500 && status < 600;
+    const isNetworkError = !error.response;
+    
+    if (retriesLeft > 0 && (isRateLimit || isServerError || isNetworkError)) {
+      console.warn(`[API-Football Retry] Request failed. Retries left: ${retriesLeft}. Waiting ${backoffMs}ms...`);
+      await delay(backoffMs);
+      return executeWithRetry(fn, retriesLeft - 1, backoffMs * 2);
+    }
+    throw error;
+  }
+}
+
+// Override apiClient.get to implement Caching, Request Deduplication, and Retry backoff
+const originalGet = apiClient.get;
+apiClient.get = async function<T = any>(url: string, config?: any): Promise<any> {
+  const params = config?.params || {};
+  const cacheKey = getCacheKey(url, params);
+  const ttl = getTTL(url, params);
+
+  // 1. Caching layer hit
+  const cachedData = getCachedItem(cacheKey);
+  if (cachedData !== null) {
+    apiTracker.addLog({
+      endpoint: url,
+      method: 'GET',
+      params: { ...params },
+      status: 'success',
+      statusText: 'تم استرداد البيانات بنجاح من الذاكرة المخبأة الحقيقية (Cache)',
+      isCached: true,
+      statusCode: 200,
+      dataSize: JSON.stringify(cachedData).length,
+      responseSample: cachedData.response?.slice(0, 1) || null
+    });
+    return {
+      data: cachedData,
+      status: 200,
+      statusText: 'OK (Cache)',
+      headers: {},
+      config: config || {}
+    };
+  }
+
+  // 2. Request deduplication layer hit
+  const sigKey = `GET:${url}:${JSON.stringify(params)}`;
+  if (inFlightRequests.has(sigKey)) {
+    const sharedPromise = inFlightRequests.get(sigKey)!;
+    const responseData = await sharedPromise;
+    return {
+      data: responseData,
+      status: 200,
+      statusText: 'OK (Deduplicated)',
+      headers: {},
+      config: config || {}
+    };
+  }
+
+  // 3. Spawn real fetch promise
+  const fetchPromise = (async () => {
+    try {
+      const resp = await executeWithRetry(() => {
+        return originalGet.call(apiClient, url, config);
+      }, 3, 1000);
+      
+      const realData = resp.data;
+      if (realData && (!realData.errors || Object.keys(realData.errors).length === 0)) {
+        setCachedItem(cacheKey, realData, ttl);
+      }
+      return realData;
+    } catch (err) {
+      inFlightRequests.delete(sigKey);
+      throw err;
+    } finally {
+      inFlightRequests.delete(sigKey);
+    }
+  })();
+
+  inFlightRequests.set(sigKey, fetchPromise);
+
+  const finalData = await fetchPromise;
+  return {
+    data: finalData,
+    status: 200,
+    statusText: 'OK (Direct)',
+    headers: {},
+    config: config || {}
+  };
+};
+
 apiClient.interceptors.response.use(
   (response) => {
     const logId = (response.config as any)._logId;
     const { data } = response;
-    const url = response.config.url || '';
-    const params = response.config.params || {};
 
-    // 1. Check if the API returned structured status block errors (such as Rate Limit, Invalid key, etc.)
     if (data && data.errors && Object.keys(data.errors).length > 0) {
       const errorMsg = JSON.stringify(data.errors);
       console.warn('API Response contains warning/errors payload:', errorMsg);
       
+      // Automatic fallback retry for free plan season restriction (only allows 2022 to 2024)
+      if (errorMsg.includes('season') && (errorMsg.includes('Free') || errorMsg.includes('plan')) && response.config && !(response.config as any)._isSeasonRetry) {
+        console.warn('Season restricted on Free plan. Retrying request with last allowed season (2024)...');
+        const retryConfig = { ...response.config, _isSeasonRetry: true } as any;
+        if (retryConfig.params) {
+          retryConfig.params = { ...retryConfig.params, season: '2024' };
+        } else {
+          retryConfig.params = { season: '2024' };
+        }
+        return apiClient(retryConfig);
+      }
+      
       let status: ApiLog['status'] = 'network-error';
-      let statusText = 'خطأ في معالجة طلب المزود الأولية';
+      let statusText = 'خطأ من مزود الخدمة الكروي';
 
       if (errorMsg.includes('token') || errorMsg.includes('limit') || errorMsg.includes('key') || errorMsg.includes('requests')) {
         status = errorMsg.includes('limit') || errorMsg.includes('requests') ? 'rate-limit' : 'auth-error';
@@ -191,60 +403,20 @@ apiClient.interceptors.response.use(
           apiTracker.updateLog(logId, {
             status,
             statusText,
-            statusCode: 200, // API sent 200 but returned an error payload
             errors: data.errors
           });
         }
-
-        // Try to query from cached real data to respect the "Cached real data" requirement
-        const cacheKey = getCacheKey(url, params);
-        const cachedStr = localStorage.getItem(cacheKey);
-        if (cachedStr) {
-          try {
-            const parsed = JSON.parse(cachedStr);
-            console.info(`[apiClient Recovery] Recovering via local cache for error payload:`, url);
-            if (logId) {
-              apiTracker.updateLog(logId, {
-                status: 'success',
-                statusText: 'تم استرداد البيانات بنجاح من الذاكرة المخبأة الحقيقية (Cache) لتعثر الاتصال',
-                isCached: true,
-                responseSample: parsed.response ? parsed.response.slice(0, 2) : null
-              });
-            }
-            return {
-              ...response,
-              data: parsed.data
-            };
-          } catch (_) {}
-        }
-
-        // Reject explicitly so matching UI handles the exception
-        return Promise.reject(new Error(`API_ERROR: ${statusText}`));
       }
+      throw new Error(`API_ERROR: ${statusText} (${errorMsg})`);
     }
 
     const responseList = data?.response || [];
     const isEmpty = responseList.length === 0;
 
-    // 2. Cache successful REAL, non-empty responses
-    if (!isEmpty) {
-      try {
-        const cacheKey = getCacheKey(url, params);
-        localStorage.setItem(cacheKey, JSON.stringify({
-          timestamp: Date.now(),
-          response: responseList,
-          data
-        }));
-      } catch (err) {
-        console.warn('Failed to save to local cache:', err);
-      }
-    }
-
-    // Update log to success
     if (logId) {
       apiTracker.updateLog(logId, {
         status: isEmpty ? 'empty-response' : 'success',
-        statusText: isEmpty ? 'الطلب ناجح ولكنه فارغ (لا توجد مباريات نشطة)' : 'تم استلام بيانات حقيقية مباشرة ومطابقتها',
+        statusText: isEmpty ? 'الطلب ناجح ولكنه غير متوفر حالياً' : 'تم استلام بيانات حقيقية مباشرة ومطابقتها',
         statusCode: response.status,
         dataSize: JSON.stringify(data).length,
         responseSample: responseList.length > 0 ? responseList.slice(0, 2) : null
@@ -256,14 +428,10 @@ apiClient.interceptors.response.use(
   async (error) => {
     const config = error.config;
     const logId = config?._logId;
-    const url = config?.url || '';
-    const params = config?.params || {};
     const status = error.response?.status;
-    const statusText = error.response?.statusText || 'تعذر الاتصال بالخادم';
 
-    console.warn(`[apiClient Interceptor] Real API Error (status: ${status || 'network'}): ${error.message || error} on ${url}`);
+    console.warn(`[apiClient Interceptor] Real API Error (status: ${status || 'network'}): ${error.message || error}`);
 
-    // Update log
     let label: ApiLog['status'] = 'network-error';
     let arDesc = `فشل الاتصال: ${error.message || 'مشكلة في الشبكة'}`;
 
@@ -284,52 +452,7 @@ apiClient.interceptors.response.use(
       });
     }
 
-    // Try to recover with CACHED real data first to avoid blocking the app
-    const cacheKey = getCacheKey(url, params);
-    const cachedStr = localStorage.getItem(cacheKey);
-    if (cachedStr) {
-      try {
-        const parsed = JSON.parse(cachedStr);
-        console.info(`[apiClient Recovery] Recovering with real cache for network crash on: ${url}`);
-        if (logId) {
-          apiTracker.updateLog(logId, {
-            status: 'success',
-            statusText: 'تم استرداد البيانات من الذاكرة المخبأة (Cache) لتعثر اتصال الشبكة',
-            isCached: true,
-            responseSample: parsed.response ? parsed.response.slice(0, 2) : null
-          });
-        }
-        return {
-          status: 200,
-          statusText: 'OK',
-          headers: {},
-          config,
-          data: parsed.data
-        };
-      } catch (_) {}
-    }
-
-    // If it is leagues list, let's provide a cached representation to not hang up the boot sequence
-    if (url.includes('leagues')) {
-      return {
-        status: 200,
-        statusText: 'OK',
-        headers: {},
-        config,
-        data: {
-          response: [
-            { league: { id: 307, name: 'الدوري السعودي للمحترفين', logo: 'https://media.api-sports.io/football/leagues/307.png' }, country: { name: 'Saudi Arabia' } },
-            { league: { id: 39, name: 'الدوري الإنجليزي الممتاز', logo: 'https://media.api-sports.io/football/leagues/39.png' }, country: { name: 'England' } },
-            { league: { id: 140, name: 'الدوري الإسباني - لاليغا', logo: 'https://media.api-sports.io/football/leagues/140.png' }, country: { name: 'Spain' } },
-            { league: { id: 135, name: 'الدوري الإيطالي - الدرجة أ', logo: 'https://media.api-sports.io/football/leagues/135.png' }, country: { name: 'Italy' } },
-            { league: { id: 2, name: 'دوري أبطال أوروبا', logo: 'https://media.api-sports.io/football/leagues/2.png' }, country: { name: 'Europe' } }
-          ]
-        }
-      };
-    }
-
-    // Strict Rule: Reject/Bubble up of error instead of returning static simulation arrays
-    return Promise.reject(new Error(`API_ERROR_BUBBLED: [${status || 'NET'}] ${arDesc}`));
+    throw error;
   }
 );
 

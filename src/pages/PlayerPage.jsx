@@ -11,6 +11,7 @@ import PlayerInfoCard from '../components/player/PlayerInfoCard';
 import PlayerStatsCard from '../components/player/PlayerStatsCard';
 import PlayerMatchesSection from '../components/player/PlayerMatchesSection';
 import PlayerPerformanceChart from '../components/player/PlayerPerformanceChart';
+import PlayerStatisticsTab from '../components/player/PlayerStatisticsTab';
 import HomeHeader from '../components/home/HomeHeader';
 
 export default function PlayerPage() {
@@ -19,6 +20,7 @@ export default function PlayerPage() {
 
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+  const [activeTab, setActiveTab] = useState('overview'); // 'overview' | 'stats'
 
   const [headerInfo, setHeaderInfo] = useState(null);
   const [playerBiog, setPlayerBiog] = useState(null);
@@ -140,13 +142,43 @@ export default function PlayerPage() {
         {/* Dynamic header Banner */}
         <PlayerHeader header={headerInfo} />
 
+        {/* Tabs Bar */}
+        <div className="flex border-b border-white/5 space-x-reverse space-x-6 pb-2 select-none" style={{ direction: 'rtl' }}>
+          <button
+            onClick={() => setActiveTab('overview')}
+            className={`pb-2.5 text-xs sm:text-sm font-black transition-all border-b-2 relative cursor-pointer ${
+              activeTab === 'overview' 
+                ? 'border-emerald-500 text-white' 
+                : 'border-transparent text-gray-400 hover:text-white'
+            }`}
+          >
+            الملخص والمباريات
+          </button>
+          <button
+            onClick={() => setActiveTab('stats')}
+            className={`pb-2.5 text-xs sm:text-sm font-black transition-all border-b-2 relative cursor-pointer ${
+              activeTab === 'stats' 
+                ? 'border-emerald-500 text-white' 
+                : 'border-transparent text-gray-400 hover:text-white'
+            }`}
+          >
+            إحصائيات اللاعبين (الرسوم البيانية)
+          </button>
+        </div>
+
         {/* Dynamic info columns */}
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 items-start">
           
           {/* Matches column (Left/Center - 2/3 wide) */}
           <div className="lg:col-span-2 space-y-6">
-            <PlayerPerformanceChart player={{ name: headerInfo.name, position: headerInfo.position, stats: playerStats }} />
-            <PlayerMatchesSection matches={playerMatches} />
+            {activeTab === 'overview' ? (
+              <>
+                <PlayerPerformanceChart player={{ name: headerInfo.name, position: headerInfo.position, stats: playerStats }} />
+                <PlayerMatchesSection matches={playerMatches} />
+              </>
+            ) : (
+              <PlayerStatisticsTab player={headerInfo} stats={playerStats} />
+            )}
           </div>
 
           {/* Biography details & active statistics column (Right - 1/3 wide) */}

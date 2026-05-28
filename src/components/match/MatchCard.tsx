@@ -8,6 +8,14 @@ interface MatchCardProps {
 }
 
 export default function MatchCard({ match }: MatchCardProps) {
+  const homeName = typeof match.homeTeam === 'object' ? match.homeTeam?.name : (match.homeTeam || 'المضيف');
+  const homeCrest = typeof match.homeTeam === 'object' ? match.homeTeam?.crest : (match.homeLogo || '');
+  const homeTla = typeof match.homeTeam === 'object' ? match.homeTeam?.tla : (homeName ? homeName.slice(0, 3).toUpperCase() : 'H');
+
+  const awayName = typeof match.awayTeam === 'object' ? match.awayTeam?.name : (match.awayTeam || 'الضيف');
+  const awayCrest = typeof match.awayTeam === 'object' ? match.awayTeam?.crest : (match.awayLogo || '');
+  const awayTla = typeof match.awayTeam === 'object' ? match.awayTeam?.tla : (awayName ? awayName.slice(0, 3).toUpperCase() : 'A');
+
   const formatTime = (utcString: string) => {
     try {
       const date = new Date(utcString);
@@ -100,19 +108,19 @@ export default function MatchCard({ match }: MatchCardProps) {
         {/* Home Team */}
         <div className="col-span-5 flex flex-col items-center justify-center text-center gap-3">
           <div className="w-14 h-14 bg-white/[0.03] border border-white/5 rounded-full p-2.5 flex items-center justify-center group-hover:scale-105 transition-transform duration-300 shadow-md">
-            {match.homeTeam.crest ? (
+            {homeCrest ? (
               <img 
-                src={match.homeTeam.crest} 
-                alt={match.homeTeam.name} 
+                src={homeCrest} 
+                alt={homeName} 
                 className="w-10 h-10 object-contain"
                 referrerPolicy="no-referrer"
               />
             ) : (
-              <span className="text-xs font-black text-gray-400">{match.homeTeam.tla}</span>
+              <span className="text-xs font-black text-gray-400">{homeTla}</span>
             )}
           </div>
           <span className="text-xs sm:text-xs font-black text-white hover:text-emerald-400 transition-colors line-clamp-1">
-            {match.homeTeam.name}
+            {homeName}
           </span>
         </div>
 
@@ -151,19 +159,19 @@ export default function MatchCard({ match }: MatchCardProps) {
         {/* Away Team */}
         <div className="col-span-5 flex flex-col items-center justify-center text-center gap-3">
           <div className="w-14 h-14 bg-white/[0.03] border border-white/5 rounded-full p-2.5 flex items-center justify-center group-hover:scale-105 transition-transform duration-300 shadow-md">
-            {match.awayTeam.crest ? (
+            {awayCrest ? (
               <img 
-                src={match.awayTeam.crest} 
-                alt={match.awayTeam.name} 
+                src={awayCrest} 
+                alt={awayName} 
                 className="w-10 h-10 object-contain"
                 referrerPolicy="no-referrer"
               />
             ) : (
-              <span className="text-xs font-black text-gray-400">{match.awayTeam.tla}</span>
+              <span className="text-xs font-black text-gray-400">{awayTla}</span>
             )}
           </div>
           <span className="text-xs sm:text-xs font-black text-white hover:text-emerald-400 transition-colors line-clamp-1">
-            {match.awayTeam.name}
+            {awayName}
           </span>
         </div>
       </div>

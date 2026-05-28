@@ -3,7 +3,7 @@ import { leagueService } from '../services/leagueService';
 import { standingsService } from '../services/standingsService';
 import { matchService } from '../services/matchService';
 
-const POPULAR_LEAGUE_MAP: Record<string, number> = {
+const POPULAR_LEAGUE_MAP = {
   'الدوري السعودي للمحترفين': 307,
   'الدوري السعودي': 307,
   'الدوري الإسباني - لاليغا': 140,
@@ -20,7 +20,7 @@ const POPULAR_LEAGUE_MAP: Record<string, number> = {
   'الدوري المصري': 233
 };
 
-function getApiLeagueId(id: string): number {
+function getApiLeagueId(id) {
   const clean = String(id).trim();
   if (/^\d+$/.test(clean)) {
     return Number(clean);
@@ -32,7 +32,7 @@ function getApiLeagueId(id: string): number {
  * Fetch league by ID or name (REAL API ONLY)
  * @param {string} id - The ID of the league or name
  */
-export async function getLeagueById(id: string) {
+export async function getLeagueById(id) {
   try {
     const apiId = getApiLeagueId(id);
     const details = await leagueService.getLeagueDetails(apiId);
@@ -54,7 +54,7 @@ export async function getLeagueById(id: string) {
  * Fetch matches of a given league (REAL API ONLY)
  * @param {string} id - The league name or ID
  */
-export async function getLeagueMatches(id: string) {
+export async function getLeagueMatches(id) {
   try {
     const apiId = getApiLeagueId(id);
     const matches = await matchService.getFixtures({
@@ -72,7 +72,7 @@ export async function getLeagueMatches(id: string) {
  * Fetch standings/table for a specific league (REAL API ONLY)
  * @param {string} id - The league identifier/name
  */
-export async function getLeagueStandings(id: string) {
+export async function getLeagueStandings(id) {
   try {
     const apiId = getApiLeagueId(id);
     const res = await standingsService.getStandings(apiId, new Date().getFullYear());

@@ -27,8 +27,10 @@ export function mapRawMatch(raw: any): Match {
 
   const mappedMatch: Match = {
     id: fixture.id ? `apf-${fixture.id}` : String(Math.random()),
-    homeTeam,
-    awayTeam,
+    homeTeam: homeTeam.name,
+    awayTeam: awayTeam.name,
+    homeTeamDetails: homeTeam,
+    awayTeamDetails: awayTeam,
     score: {
       home: goals.home !== undefined ? goals.home : null,
       away: goals.away !== undefined ? goals.away : null
@@ -43,7 +45,8 @@ export function mapRawMatch(raw: any): Match {
     isLive,
     utcDate: fixture.date || new Date().toISOString(),
     startTime: fixture.date || undefined,
-    league: {
+    league: leagueObj.name || 'بطولة',
+    leagueDetails: {
       id: leagueObj.id || '',
       name: leagueObj.name || 'بطولة',
       country: leagueObj.country || 'عام',
@@ -163,16 +166,8 @@ export function mapRawLineups(rawList: any[]): TeamLineup[] {
 // BACKWARD COMPATIBILITY INTERFACES & HELPERS
 export interface MappedMatch {
   id: number;
-  homeTeam: {
-    name: string;
-    crest: string;
-    tla: string;
-  };
-  awayTeam: {
-    name: string;
-    crest: string;
-    tla: string;
-  };
+  homeTeam: any;
+  awayTeam: any;
   score: {
     home: number;
     away: number;
@@ -188,6 +183,10 @@ export interface MappedMatch {
   minute?: number;
   homeScore: number;
   awayScore: number;
+  homeLogo?: string;
+  awayLogo?: string;
+  homeTeamDetails?: any;
+  awayTeamDetails?: any;
 }
 
 export function mapFootballDataResponse(rawMatch: any): MappedMatch {
@@ -207,18 +206,25 @@ export function mapFootballDataResponse(rawMatch: any): MappedMatch {
     normalizedStatus = 'POSTPONED';
   }
 
+  const homeName = rawMatch.homeTeam?.name || rawMatch.homeTeam?.shortName || 'غير محدد';
+  const awayName = rawMatch.awayTeam?.name || rawMatch.awayTeam?.shortName || 'غير محدد';
+
   return {
     id: rawMatch.id,
-    homeTeam: {
-      name: rawMatch.homeTeam?.name || rawMatch.homeTeam?.shortName || 'غير محدد',
+    homeTeam: homeName,
+    awayTeam: awayName,
+    homeTeamDetails: {
+      name: homeName,
       crest: rawMatch.homeTeam?.crest || '',
       tla: rawMatch.homeTeam?.tla || 'H',
     },
-    awayTeam: {
-      name: rawMatch.awayTeam?.name || rawMatch.awayTeam?.shortName || 'غير محدد',
+    awayTeamDetails: {
+      name: awayName,
       crest: rawMatch.awayTeam?.crest || '',
       tla: rawMatch.awayTeam?.tla || 'A',
     },
+    homeLogo: rawMatch.homeTeam?.crest || '',
+    awayLogo: rawMatch.awayTeam?.crest || '',
     score: {
       home: scoreHome,
       away: scoreAway,

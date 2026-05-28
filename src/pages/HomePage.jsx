@@ -34,6 +34,7 @@ import {
 import { useAuthState } from 'react-firebase-hooks/auth';
 import { auth, db } from '../firebase';
 import { doc, onSnapshot, updateDoc } from 'firebase/firestore';
+import { filterMatchesByCustomLeagues, filterLeaguesByCustomLeagues } from '../utils/leagueFilter';
 
 // Components
 import HomeHeader from '../components/home/HomeHeader';
@@ -86,15 +87,18 @@ export default function HomePage() {
 
   // 1. Live and today matches extraction & formatting
   const liveMatches = useMemo(() => {
-    return Array.isArray(qLiveMatches) ? qLiveMatches : [];
+    const list = Array.isArray(qLiveMatches) ? qLiveMatches : [];
+    return filterMatchesByCustomLeagues(list);
   }, [qLiveMatches]);
 
   const todayMatches = useMemo(() => {
-    return Array.isArray(qFixtures) ? qFixtures : [];
+    const list = Array.isArray(qFixtures) ? qFixtures : [];
+    return filterMatchesByCustomLeagues(list);
   }, [qFixtures]);
 
   const leaguesList = useMemo(() => {
-    return Array.isArray(qLeagues) ? qLeagues : [];
+    const list = Array.isArray(qLeagues) ? qLeagues : [];
+    return filterLeaguesByCustomLeagues(list);
   }, [qLeagues]);
 
   const newsArticles = useMemo(() => {

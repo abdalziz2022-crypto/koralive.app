@@ -151,7 +151,7 @@ export default function TeamPage() {
             <div className="space-y-4">
               <div className="flex items-center justify-between px-1" style={{ direction: 'rtl' }}>
                 <h2 className="text-base font-black text-white">جدول المواعيد والمباريات</h2>
-                <span className="text-[10px] text-gray-400 font-bold">إجمالي {(teamMatches.upcoming.length + teamMatches.recent.length)} مواجهات</span>
+                <span className="text-[10px] text-gray-400 font-bold">إجمالي {((teamMatches?.upcoming?.length || 0) + (teamMatches?.recent?.length || 0))} مواجهات</span>
               </div>
               <TeamMatchesSection matchesObj={teamMatches} />
             </div>

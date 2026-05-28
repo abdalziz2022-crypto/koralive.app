@@ -19,6 +19,7 @@ import { useNavigate, useSearchParams } from 'react-router-dom';
 import { Match } from '../types';
 import MatchCard from './MatchCard';
 import AdBanner from './AdBanner';
+import { filterMatchesByCustomLeagues } from '../utils/leagueFilter';
 
 type TabType = 'LIVE' | 'TODAY' | 'UPCOMING' | 'FINISHED';
 
@@ -56,6 +57,7 @@ export default function Schedule() {
   // Filter & categorization engine based on activeTab and filters
   const processedMatches = useMemo(() => {
     let result = Array.isArray(matches) ? [...matches] : [];
+    result = filterMatchesByCustomLeagues(result);
 
     // Status / Tab categorization
     const now = new Date();

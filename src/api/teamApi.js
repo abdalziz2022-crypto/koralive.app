@@ -3,46 +3,55 @@ import { teamService } from '../services/teamService';
 import { matchService } from '../services/matchService';
 import { mapRawMatches } from '../services/matchMapper';
 
+function safeDecode(str) {
+  try {
+    return decodeURIComponent(str);
+  } catch {
+    return str;
+  }
+}
+
 /**
  * Fetch team basic details by numeric id or name securely via real API-Football endpoints. No mock generators.
  * @param {string|number} id - Team identifier or search query name
  */
 export async function getTeamById(id) {
-  const query = String(id).trim();
-  const isNumeric = /^\d+$/.test(query);
+  const decoded = safeDecode(id).trim();
+  const cleanId = decoded.replace('apf-', '');
+  const isNumeric = /^\d+$/.test(cleanId);
 
   try {
     if (isNumeric) {
-      const details = await teamService.getTeamDetails(query);
+      const details = await teamService.getTeamDetails(cleanId);
       return {
-        id: details.id,
-        name: details.name,
-        logo: details.logo,
-        founded: details.founded,
-        venueName: details.venueName,
-        venueCity: details.venueCity,
-        venueCapacity: details.venueCapacity,
-        country: details.country,
-        code: details.code
+        id: details?.id || '',
+        name: details?.name || 'غير معروف',
+        logo: details?.logo || '',
+        founded: details?.founded,
+        venueName: details?.venueName || '',
+        venueCity: details?.venueCity || '',
+        venueCapacity: details?.venueCapacity || 0,
+        country: details?.country || '',
+        code: details?.code || ''
       };
     } else {
       const response = await apiClient.get('/teams', {
-        params: { search: query }
+        params: { search: decoded }
       });
       const rawTeam = response.data?.response?.[0];
       if (!rawTeam) {
-        throw new Error(`TEAM_NOT_FOUND: لم يتم العثور على نادي حقيقي باسم "${query}" في الخادم.`);
+        throw new Error(`TEAM_NOT_FOUND: لم يتم العثور على نادي حقيقي باسم "${decoded}" في الخادم.`);
       }
       return {
-        id: rawTeam.team.id,
-        name: rawTeam.team.name,
-        logo: rawTeam.team.logo,
-        founded: rawTeam.team.founded,
-        venueName: rawTeam.venue.name,
-        venueCity: rawTeam.venue.city,
-        venueCapacity: rawTeam.venue.capacity,
-        country: rawTeam.team.country,
-        code: rawTeam.team.code
+        id: rawTeam.team?.id || '',
+        name: rawTeam.team?.name || 'غير معروف',
+        logo: rawTeam.team?.logo || '',
+        founded: rawTeam.team?.founded,
+        venueName: rawTeam.venue?.name || '',
+        venueCity: rawTeam.venue?.city || '',
+        venueCapacity: rawTeam.venue?.capacity || 0,
+        country: rawTeam.team?.country || '',
+        code: rawTeam.team?.code || ''
       };
     }
   } catch (err) {
@@ -62,18 +71,47 @@ export async function getTeamMatches(id) {
       return [];
     }
 
-    // Query 5 real recent / upcoming fixtures
-    const response = await apiClient.get('/fixtures', {
-      params: { team: team.id, last: 10 }
+    // Determine current football season based on date (May 2026 is season 2025)
+    const currentMonth = new Date().getMonth();
+    const currentYear = new Date().getFullYear();
+    const soccerSeasonYear = currentMonth < 6 ? currentYear - 1 : currentYear;
+
+    let response = await apiClient.get('/fixtures', {
+      params: { team: team.id, season: String(soccerSeasonYear) }
     });
 
-    const rawMatches = response.data?.response || [];
-    // If empty, try upcoming
+    let rawMatches = response.data?.response || [];
+
+    // Tries fallback to other/current/previous season if returned results empty
     if (rawMatches.length === 0) {
-      const nextResponse = await apiClient.get('/fixtures', {
-        params: { team: team.id, next: 10 }
-      });
-      return matchService.getFixtures ? matchService.getFixtures() : []; 
+      const fallbackYears = [currentYear, currentYear - 1].filter(yr => yr !== soccerSeasonYear);
+      for (const yr of fallbackYears) {
+        try {
+          const fbResponse = await apiClient.get('/fixtures', {
+            params: { team: team.id, season: String(yr) }
+          });
+          const fbMatches = fbResponse.data?.response || [];
+          if (fbMatches.length > 0) {
+            rawMatches = fbMatches;
+            break;
+          }
+        } catch (e) {
+          console.warn(`Fallback fetching fixtures for season ${yr} failed:`, e);
+        }
+      }
+    }
+
+    // If still empty and matchService has fixtures, use fallback or return empty
+    if (rawMatches.length === 0 && matchService.getFixtures) {
+      try {
+        const fallbackList = await matchService.getFixtures();
+        return fallbackList.filter(m => 
+          String(m.homeTeamDetails?.id) === String(team.id) || 
+          String(m.awayTeamDetails?.id) === String(team.id)
+        );
+      } catch (e) {
+        console.warn('Fallback getFixtures from matchService failed:', e);
+      }
     }
 
     return mapRawMatches(rawMatches);
@@ -105,7 +143,7 @@ export async function getTeamStandings(id) {
     });
 
     const stands = response.data?.response?.[0]?.league?.standings?.[0] || [];
-    const teamRow = stands.find((s: any) => String(s.team.id) === String(team.id));
+    const teamRow = stands.find((s) => String(s.team.id) === String(team.id));
 
     if (teamRow) {
       return {
@@ -146,7 +184,7 @@ export async function getTeamPlayers(id) {
         params: { team: team.id, season: '2025' }
       });
       const list = playersRes.data?.response || [];
-      return list.map((item: any) => ({
+      return list.map((item) => ({
         name: item.player.name,
         position: item.statistics?.[0]?.games?.position || 'وسط',
         number: item.statistics?.[0]?.games?.number || 9,
@@ -154,7 +192,7 @@ export async function getTeamPlayers(id) {
       }));
     }
 
-    return rawSquad.map((item: any) => {
+    return rawSquad.map((item) => {
       let arabicPos = item.position;
       if (item.position === 'Defender') arabicPos = 'مدافع';
       else if (item.position === 'Goalkeeper') arabicPos = 'حارس مرمى';

@@ -67,9 +67,12 @@ export interface Match {
   id: string; // Uniform ID mapped prefix as `apf-`
   homeTeam: Team | any;
   awayTeam: Team | any;
+  homeTeamDetails?: any;
+  awayTeamDetails?: any;
   score?: MatchScore;
   status: MatchStatus;
   league: MatchLeague;
+  leagueDetails?: MatchLeagueObj;
   utcDate?: string;
   minute?: number;
   isLive?: boolean;

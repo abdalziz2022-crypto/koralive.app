@@ -450,6 +450,79 @@ app.get("/api/health", (req, res) => {
   res.json({ status: "ok" });
 });
 
+// A robust client-side proxy route for API-Football to completely avoid CORS and Network Errors in the browser
+app.all("/api/football-api/*", async (req, res) => {
+  const subPath = req.params[0] || "";
+  const queryString = new URLSearchParams(req.query as any).toString();
+  
+  // Try to read the master/active API key
+  const apiKey = (process.env.VITE_API_KEY || "c68e7851bdbe53f596f0d79299d86d57").trim();
+  const isApiSports = apiKey.length === 32;
+  const isRapidApiFootball = apiKey.length === 50;
+
+  let targetUrl = '';
+  const headers: Record<string, string> = {
+    'Accept': 'application/json'
+  };
+
+  let cleanSubPath = subPath;
+  if (cleanSubPath.startsWith("/")) {
+    cleanSubPath = cleanSubPath.slice(1);
+  }
+
+  // Smart routing/matching of v3 suffix
+  if (isApiSports) {
+    // API-Sports native does not use /v3/ prefix in endpoints, strip if present
+    if (cleanSubPath.startsWith("v3/")) {
+      cleanSubPath = cleanSubPath.slice(3);
+    }
+    targetUrl = `https://v3.football.api-sports.io/${cleanSubPath}`;
+    headers['x-apisports-key'] = apiKey;
+  } else if (isRapidApiFootball) {
+    // RapidAPI utilizes api-football-v1.p.rapidapi.com/v3/ endpoints, prepend v3/ if missing
+    if (!cleanSubPath.startsWith("v3/")) {
+      cleanSubPath = "v3/" + cleanSubPath;
+    }
+    targetUrl = `https://api-football-v1.p.rapidapi.com/${cleanSubPath}`;
+    headers['X-RapidAPI-Key'] = apiKey;
+    headers['X-RapidAPI-Host'] = 'api-football-v1.p.rapidapi.com';
+  } else {
+    // Treat as Free Proxy fallback
+    if (cleanSubPath.startsWith("v3/")) {
+      cleanSubPath = cleanSubPath.slice(3);
+    }
+    targetUrl = `https://free-api-live-football-data.p.rapidapi.com/${cleanSubPath}`;
+    headers['X-RapidAPI-Key'] = apiKey;
+    headers['X-RapidAPI-Host'] = 'free-api-live-football-data.p.rapidapi.com';
+  }
+
+  const finalUrl = `${targetUrl}${queryString ? `?${queryString}` : ""}`;
+
+  try {
+    const fetchResponse = await fetch(finalUrl, {
+      method: req.method,
+      headers: headers,
+      body: req.method !== 'GET' && req.method !== 'HEAD' ? JSON.stringify(req.body) : undefined
+    });
+
+    if (!fetchResponse.ok) {
+      console.warn(`[Football API Proxy HTTP Error] Status ${fetchResponse.status} from: ${finalUrl}`);
+      const text = await fetchResponse.text();
+      return res.status(fetchResponse.status).send(text);
+    }
+
+    const data = await fetchResponse.json();
+    return res.json(data);
+  } catch (err: any) {
+    console.error(`[Football API Proxy Exception] Error routing to ${finalUrl}:`, err);
+    return res.status(502).json({ 
+      error: "Network Error", 
+      message: "فشل الاتصال المباشر بمزود الخدمة عبر النفق الآمن الخاص بالخادم", 
+      details: err.message 
+    });
+  }
+});
+
 app.get("/api/debug/firestore", async (req, res) => {
   try {
     const testDoc = await firestore.collection('sources').limit(1).get();
@@ -838,32 +911,29 @@ async function syncFromSource(source: any) {
     if (source.provider === 'GEMINI') {
       await syncSportsDataWithAI(source.target); // استخدام الدالة الموجودة حالياً لـ Gemini مع تمرير الهدف
     } else if (source.provider === 'FOOTBALL_API') {
-      // جلب المفتاح الخاص أو المفتاح العام من النظام
-      let apiKey = source.config?.apiKey;
-      
-      if (!apiKey) {
-        // محاولة جلب المفتاح من إعدادات النظام في Firestore
-        const settingsDoc = await firestore.collection('settings').doc('global').get();
-        if (settingsDoc.exists) {
-          apiKey = settingsDoc.data()?.footballApiKey;
-        }
+      // استخدام المفتاح الفعال المعتمد لجلب البيانات الحقيقية مباشرة
+      const apiKey = 'c68e7851bdbe53f596f0d79299d86d57';
+      const isApiSports = apiKey.length === 32;
+
+      const headers: Record<string, string> = {};
+      let fetchUrl = '';
+
+      if (isApiSports) {
+        headers['x-apisports-key'] = apiKey;
+        fetchUrl = 'https://v3.football.api-sports.io/fixtures';
+      } else {
+        headers['X-RapidAPI-Key'] = apiKey;
+        headers['X-RapidAPI-Host'] = 'api-football-v1.p.rapidapi.com';
+        fetchUrl = 'https://api-football-v1.p.rapidapi.com/v3/fixtures';
       }
-
-      // الملاذ الأخير: البيئة
-      if (!apiKey) apiKey = process.env.FOOTBALL_API_KEY;
-
-      if (!apiKey) throw new Error("Missing Football API Key (checked Source Config, Global Settings, and Environment)");
 
       const options = {
         method: 'GET',
-        headers: {
-          'X-RapidAPI-Key': apiKey,
-          'X-RapidAPI-Host': 'api-football-v1.p.rapidapi.com'
-        }
+        headers
       };
       
       const date = new Date().toISOString().split('T')[0];
-      const response = await fetch(`https://api-football-v1.p.rapidapi.com/v3/fixtures?date=${date}`, options);
+      const response = await fetch(`${fetchUrl}?date=${date}`, options);
       const data: any = await response.json();
 
       if (data.response && Array.isArray(data.response)) {
