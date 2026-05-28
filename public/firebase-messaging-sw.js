@@ -3,12 +3,12 @@ importScripts('https://www.gstatic.com/firebasejs/9.0.0/firebase-messaging-compa
 
 // This is required for the service worker to handle background messages
 firebase.initializeApp({
-  apiKey: "REPLACE_WITH_YOUR_KEY",
-  authDomain: "REPLACE_WITH_YOUR_DOMAIN",
-  projectId: "REPLACE_WITH_YOUR_PROJECT_ID",
-  storageBucket: "REPLACE_WITH_YOUR_STORAGE_BUCKET",
-  messagingSenderId: "REPLACE_WITH_YOUR_MESSAGING_SENDER_ID",
-  appId: "REPLACE_WITH_YOUR_APP_ID"
+  apiKey: "AIzaSyB4asms_LyYqluR9v9EZrKohsvNF7Xqwbo",
+  authDomain: "gen-lang-client-0959045190.firebaseapp.com",
+  projectId: "gen-lang-client-0959045190",
+  storageBucket: "gen-lang-client-0959045190.firebasestorage.app",
+  messagingSenderId: "958469007898",
+  appId: "1:958469007898:web:7c9a852967b8c2b5b97fa3"
 });
 
 const messaging = firebase.messaging();

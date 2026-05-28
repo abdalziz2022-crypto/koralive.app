@@ -688,25 +688,78 @@ app.post("/api/matches/refresh", async (req, res) => {
   }
 });
 
-async function sendPushNotification(title: string, body: string) {
+app.post("/api/send-push", async (req, res) => {
+  const { title, body, link } = req.body;
+  if (!title || !body) {
+    return res.status(400).json({ error: "Missing title or body" });
+  }
+  try {
+    await sendPushNotification(title, body, link || '/');
+    res.json({ success: true, message: "Push notifications broadcasted successfully" });
+  } catch (error: any) {
+    console.error("Error in /api/send-push route:", error);
+    res.status(500).json({ error: "Failed to broadcast notification", details: error.message });
+  }
+});
+
+async function sendPushNotification(title: string, body: string, link: string = '/#live') {
   if (!messaging) {
     console.warn("Messaging not initialized. Skipping notification.");
     return;
   }
+  
+  // 1. Try sending via topic (legacy/compatibility)
   try {
-    const message = {
+    const topicMessage = {
       notification: { title, body },
       topic: 'matches_updates',
       webpush: {
         fcmOptions: {
-          link: '/#live'
+          link
         }
       }
     };
-    const response = await messaging.send(message);
-    console.log('Successfully sent message:', response);
+    await messaging.send(topicMessage);
+    console.log('Successfully sent message to topic matches_updates');
   } catch (error) {
-    console.error('Error sending push notification:', error);
+    console.warn('Error sending direct push to topic matches_updates:', error);
+  }
+
+  // 2. Multicast directly to all stored FCM tokens in Firestore
+  if (!firestore) {
+    console.warn("Firestore not ready. Skipping token multicast.");
+    return;
+  }
+  
+  try {
+    const tokensSnapshot = await firestore.collection('fcm_tokens').get();
+    const tokens: string[] = [];
+    tokensSnapshot.forEach((doc: any) => {
+      const data = doc.data();
+      if (data && data.token) {
+        tokens.push(data.token);
+      }
+    });
+
+    if (tokens.length > 0) {
+      console.log(`Sending multicast background pushes to ${tokens.length} registered device tokens...`);
+      const messages = tokens.map(token => ({
+        token,
+        notification: { title, body },
+        webpush: {
+          fcmOptions: {
+            link
+          }
+        }
+      }));
+      // send to all in batches
+      const response = await messaging.sendEach(messages);
+      console.log(`Successfully sent multicast messages. Success: ${response.successCount}, Failures: ${response.failureCount}`);
+    } else {
+      console.log('No Device FCM tokens found in fcm_tokens collection.');
+    }
+  } catch (err: any) {
+    console.error('Error fetching FCM tokens or sending multicast:', err);
   }
 }
 

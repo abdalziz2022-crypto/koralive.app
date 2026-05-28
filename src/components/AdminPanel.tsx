@@ -237,6 +237,20 @@ export default function AdminPanel() {
 
   const isAdmin = user?.email === 'abdalziz2022@gmail.com';
 
+  const triggerPushNotification = async (title: string, body: string, link: string = '/') => {
+    try {
+      await fetch('/api/send-push', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ title, body, link })
+      });
+    } catch (e) {
+      console.error('Error sending push notification broadcast:', e);
+    }
+  };
+
   const resetForms = () => {
     setMatchData(initialMatch);
     setNewsData(initialNews);
@@ -252,8 +266,22 @@ export default function AdminPanel() {
     try {
       if (editingId) {
         await updateDoc(doc(db, 'matches', editingId), stripUndefined({ ...matchData, updatedAt: new Date().toISOString() }));
+        // Broadcast push notification for match update
+        const scoreString = `${matchData.homeScore ?? 0} - ${matchData.awayScore ?? 0}`;
+        const matchStateDesc = matchData.status === 'LIVE' ? `جارية الآن دقيقة ${matchData.minute ?? 1}` : matchData.status === 'FINISHED' ? 'انتهت المباراة' : 'انطلاق قريباً';
+        await triggerPushNotification(
+          'تحديث مباراة مباشر ⚽', 
+          `${matchData.homeTeam} [ ${scoreString} ] ${matchData.awayTeam} (${matchStateDesc})`, 
+          '/#live'
+        );
       } else {
         await addDoc(collection(db, 'matches'), stripUndefined({ ...matchData, createdAt: new Date().toISOString() }));
+        // Broadcast push notification for new match
+        await triggerPushNotification(
+          'مباراة جديدة مضافة ⚽', 
+          `${matchData.homeTeam} ضد ${matchData.awayTeam} - تابع التغطية الحصرية على كورة لايف!`, 
+          '/#live'
+        );
       }
       showToast('تم حفظ المباراة بنجاح', 'success');
       resetForms();
@@ -310,12 +338,16 @@ export default function AdminPanel() {
     try {
       if (editingId) {
         await updateDoc(doc(db, 'news', editingId), stripUndefined(newsData));
+        // Broadcast news update push notification
+        await triggerPushNotification('تحديث خبر عاجل 📰', newsData.title, '/news');
       } else {
         await addDoc(collection(db, 'news'), stripUndefined({ 
           ...newsData, 
           createdAt: new Date().toISOString(),
           author: user?.displayName || 'المسؤول'
         }));
+        // Broadcast new article push notification
+        await triggerPushNotification('خبر رياضي عاجل 📰', newsData.title, '/news');
       }
       showToast('تم حفظ الخبر بنجاح', 'success');
       resetForms();
