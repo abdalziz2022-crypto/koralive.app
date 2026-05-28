@@ -2,6 +2,7 @@ import React, { useEffect } from 'react';
 import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
 import { Capacitor } from '@capacitor/core';
 import { AdMob } from '@capacitor-community/admob';
+import { SpeedInsights } from '@vercel/speed-insights/react';
 import MainLayout from './components/layouts/MainLayout';
 import HomePage from './pages/HomePage';
 import MatchDetailsPage from './pages/MatchDetailsPage';
@@ -89,6 +90,7 @@ export default function App() {
           </SettingsProvider>
         </ErrorProvider>
       </ThemeProvider>
+      <SpeedInsights />
     </QueryClientProvider>
   );
 }
