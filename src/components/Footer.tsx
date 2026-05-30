@@ -41,6 +41,7 @@ export default function Footer() {
             <li><Link to="/schedule" className="hover:text-primary transition-colors">جدول المباريات</Link></li>
             <li><Link to="/leagues" className="hover:text-primary transition-colors">البطولات</Link></li>
             <li><Link to="/profile" className="hover:text-primary transition-colors">حسابي</Link></li>
+            <li><Link to="/download" className="text-emerald-450 hover:text-primary font-black transition-all">تحميل التطبيق APK / PWA ⚡</Link></li>
           </ul>
         </div>
       </div>

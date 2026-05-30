@@ -1,6 +1,6 @@
 {
   "expo": {
-    "name": "كورة 90",
+    "name": "كورة لايف",
     "slug": "koralive-mobile",
     "version": "1.0.0",
     "orientation": "portrait",
@@ -13,7 +13,7 @@
     },
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.kora90.kora90",
+      "bundleIdentifier": "com.koralive.app",
       "infoPlist": {
         "UIBackgroundModes": ["remote-notification"]
       }
@@ -23,7 +23,7 @@
         "foregroundImage": "./assets/adaptive-icon.png",
         "backgroundColor": "#030712"
       },
-      "package": "com.kora90.kora90",
+      "package": "com.koralive.app",
       "permissions": [
         "INTERNET",
         "ACCESS_NETWORK_STATE",

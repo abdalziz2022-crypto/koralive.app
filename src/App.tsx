@@ -26,6 +26,7 @@ import NewsAggregatorPage from './pages/NewsAggregatorPage';
 import BrandSystemPage from './pages/BrandSystemPage';
 import FootballDebugScreen from './pages/FootballDebugScreen';
 import SystemHealthPage from './pages/SystemHealthPage';
+import DownloadPage from './pages/DownloadPage';
 
 import LeaguesPage from './pages/LeaguesPage';
 import LeaguePage from './pages/LeaguePage';
@@ -115,6 +116,7 @@ export default function App() {
                       <Route path="/leagues" element={<LeaguesPage />} />
                       <Route path="/admin" element={<AdminPanel />} />
                       <Route path="/admin/system-health" element={<SystemHealthPage />} />
+                      <Route path="/download" element={<DownloadPage />} />
                       <Route path="/profile" element={<Profile />} />
                       <Route path="/test-match" element={<MatchTestPage />} />
                       <Route path="/apifootball-test" element={<ApiFootballTestPage />} />
