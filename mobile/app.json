@@ -23,7 +23,7 @@
         "foregroundImage": "./assets/adaptive-icon.png",
         "backgroundColor": "#030712"
       },
-      "package": "com.koralive.app",
+      "package": "com.kora90.kora90",
       "permissions": [
         "INTERNET",
         "ACCESS_NETWORK_STATE",
