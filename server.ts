@@ -140,10 +140,10 @@ const syncMatchesForNotifications = async () => {
   }
 };
 
-  // تشغيل المزامنة كل 5 دقائق للفحص لتجنب استهلاك الكوتا بالخلفية
-  setInterval(syncMatchesForNotifications, 5 * 60 * 1000);
-  // تأخير التشغيل الأولي لإعطاء فرصة لبدء الخادم بسلام
-  setTimeout(syncMatchesForNotifications, 20000);
+  // تشغيل المزامنة كل 15 دقيقة للفحص لتجنب استهلاك الكوتا بالخلفية
+  setInterval(syncMatchesForNotifications, 15 * 60 * 1000);
+  // تأخير التشغيل الأولي لإعطاء فرصة لبدء الخادم بسلام وهدوء واستقرار تام
+  setTimeout(syncMatchesForNotifications, 10 * 60 * 1000); // 10 minutes delay
 
 const app = express();
 const PORT = 3000;
@@ -480,13 +480,322 @@ app.get("/api/health", (req, res) => {
   res.json({ status: "ok" });
 });
 
+// Persistent registry to track last success time of each core integration service
+const lastSuccessRegistry = {
+  apiFootball: null as string | null,
+  gemini: null as string | null,
+  firebase: null as string | null,
+};
+
+// Secure Server-side Server Diagnostics and API Key status audits
+app.get("/api/diagnostics", async (req, res) => {
+  const hasViteKey = !!process.env.VITE_API_KEY;
+  const hasGeminiKey = !!process.env.GEMINI_API_KEY;
+  
+  let firebaseOk = false;
+  let firebaseQuotaExceeded = false;
+  try {
+    if (typeof firestore !== 'undefined' && firestore) {
+      await firestore.collection('settings').limit(1).get();
+      firebaseOk = true;
+      lastSuccessRegistry.firebase = new Date().toISOString();
+    }
+  } catch (err: any) {
+    const isQuota = err.message?.includes('RESOURCE_EXHAUSTED') || err.message?.includes('Quota exceeded') || err.code === 8;
+    if (isQuota) {
+      firebaseQuotaExceeded = true;
+      firebaseOk = true; // Still connected but limited
+      console.warn("[Diagnostics] Firebase check skipped safely: Firestore DB Quota/Rate Limit (RESOURCE_EXHAUSTED). Utilizing in-memory static backups.");
+    } else {
+      console.warn("[Diagnostics] Firebase query check failed:", err.message || err);
+    }
+  }
+
+  let footballApiOk = false;
+  let footballApiMessage = 'المفتاح غير مهيأ';
+  if (hasViteKey) {
+    try {
+      const apiKey = process.env.VITE_API_KEY!.trim();
+      const isApiSports = apiKey.length === 32;
+      const headers: Record<string, string> = {};
+      let testUrl = '';
+      if (isApiSports) {
+        headers['x-apisports-key'] = apiKey;
+        testUrl = 'https://v3.football.api-sports.io/status';
+      } else {
+        headers['X-RapidAPI-Key'] = apiKey;
+        headers['X-RapidAPI-Host'] = 'api-football-v1.p.rapidapi.com';
+        testUrl = 'https://api-football-v1.p.rapidapi.com/v3/status';
+      }
+      const response = await fetch(testUrl, { headers, method: 'GET' });
+      const data: any = await response.json();
+      if (response.ok && data && (!data.errors || Object.keys(data.errors).length === 0)) {
+        footballApiOk = true;
+        footballApiMessage = 'اتصال سليم وطبيعي';
+        lastSuccessRegistry.apiFootball = new Date().toISOString();
+      } else {
+        footballApiMessage = data?.errors ? JSON.stringify(data.errors) : 'استجابة غير صالحة';
+      }
+    } catch (err: any) {
+      footballApiMessage = err.message || 'خطأ في الشبكة';
+    }
+  }
+
+  res.json({
+    viteApiKeyStatus: hasViteKey,
+    geminiApiKeyStatus: hasGeminiKey,
+    firebaseStatus: firebaseOk || firebaseQuotaExceeded,
+    firebaseQuotaExceeded,
+    footballApiStatus: footballApiOk,
+    footballApiMessage,
+    serverConnection: true
+  });
+});
+
+// Powerful, fully Arabic diagnostic test API runner
+app.post("/api/diagnostics/run-tests", async (req, res) => {
+  console.log("[Diagnostics Run] Running active connection checks for all sub-services...");
+  
+  // 1. Firebase Firestore Test
+  let firebaseResult = {
+    name: "مستند بيئة قاعدة Firebase Firestore",
+    status: "NETWORK ERROR ⚠️",
+    isConfigured: !!process.env.FIREBASE_SERVICE_ACCOUNT_KEY,
+    isValid: false,
+    isQuotaExceeded: false,
+    lastSuccess: lastSuccessRegistry.firebase,
+    error: "قاعدة Firestore غير متصلة أو متوقفة",
+  };
+
+  if (typeof firestore !== 'undefined' && firestore) {
+    try {
+      // Direct query fetch test
+      await firestore.collection('settings').limit(1).get();
+      lastSuccessRegistry.firebase = new Date().toISOString();
+      firebaseResult = {
+        name: "مستند بيئة قاعدة Firebase Firestore",
+        status: "CONNECTED ✅",
+        isConfigured: true,
+        isValid: true,
+        isQuotaExceeded: false,
+        lastSuccess: lastSuccessRegistry.firebase,
+        error: "الربط آمن، الاتصال بقاعدة البيانات سليم ونشط",
+      };
+    } catch (err: any) {
+      const errStr = err.message || "";
+      const isQuota = errStr.includes('RESOURCE_EXHAUSTED') || errStr.includes('Quota exceeded') || err.code === 8;
+      
+      if (isQuota) {
+        firebaseResult = {
+          name: "مستند بيئة قاعدة Firebase Firestore",
+          status: "RATE LIMITED ⚠️",
+          isConfigured: true,
+          isValid: true,
+          isQuotaExceeded: true,
+          lastSuccess: lastSuccessRegistry.firebase,
+          error: "تم استنفاد حصة طلبات Firestore الكود 8 (RESOURCE_EXHAUSTED) - جاري العمل بنظام النسخ الاحتياطي في الذاكرة",
+        };
+      } else if (errStr.includes("permission-denied") || errStr.includes("Unauthorized") || errStr.includes("unauthorized")) {
+        firebaseResult = {
+          name: "مستند بيئة قاعدة Firebase Firestore",
+          status: "INVALID KEY ❌",
+          isConfigured: true,
+          isValid: false,
+          isQuotaExceeded: false,
+          lastSuccess: lastSuccessRegistry.firebase,
+          error: "المفاتيح غير فعالة داخل Firebase Admin SDK (Permission Denied)، يرجى التحقق من ملف التكوين",
+        };
+      } else {
+        firebaseResult = {
+          name: "مستند بيئة قاعدة Firebase Firestore",
+          status: "NETWORK ERROR ⚠️",
+          isConfigured: true,
+          isValid: false,
+          isQuotaExceeded: false,
+          lastSuccess: lastSuccessRegistry.firebase,
+          error: errStr || "خطأ غير متوقع في الوصول السحابي لقاعدة Firestore",
+        };
+      }
+    }
+  } else {
+    firebaseResult.error = "لم يتم تهيئة حزمة Firebase Admin SDK على الخادم (مستند مفتاح بيئة الخدمة مفقود)";
+  }
+
+  // 2. API-Football Connection Test
+  let footballResult = {
+    name: "مزود البيانات الكروي (API-Football)",
+    status: "INVALID KEY ❌",
+    isConfigured: !!process.env.VITE_API_KEY,
+    isValid: false,
+    isQuotaExceeded: false,
+    lastSuccess: lastSuccessRegistry.apiFootball,
+    error: "مفتاح الربط الرياضي مفقود من متغيرات البيئة",
+  };
+
+  if (process.env.VITE_API_KEY) {
+    try {
+      const apiKey = process.env.VITE_API_KEY.trim();
+      const isApiSports = apiKey.length === 32;
+      const headers: Record<string, string> = {};
+      let testUrl = '';
+      if (isApiSports) {
+        headers['x-apisports-key'] = apiKey;
+        testUrl = 'https://v3.football.api-sports.io/status';
+      } else {
+        headers['X-RapidAPI-Key'] = apiKey;
+        headers['X-RapidAPI-Host'] = 'api-football-v1.p.rapidapi.com';
+        testUrl = 'https://api-football-v1.p.rapidapi.com/v3/status';
+      }
+
+      const controller = new AbortController();
+      const timeoutSec = setTimeout(() => controller.abort(), 6000);
+      const response = await fetch(testUrl, { headers, method: 'GET', signal: controller.signal });
+      clearTimeout(timeoutSec);
+
+      const data: any = await response.json().catch(() => null);
+
+      if (response.ok && data && (!data.errors || Object.keys(data.errors).length === 0)) {
+        lastSuccessRegistry.apiFootball = new Date().toISOString();
+        footballResult = {
+          name: "مزود البيانات الكروي (API-Football)",
+          status: "CONNECTED ✅",
+          isConfigured: true,
+          isValid: true,
+          isQuotaExceeded: false,
+          lastSuccess: lastSuccessRegistry.apiFootball,
+          error: "تم فك الترخيص، استجابة الاتصال نشطة والطلبات سليمة",
+        };
+      } else {
+        const errorsStr = data?.errors ? JSON.stringify(data.errors) : "";
+        const isRate = response.status === 429 || errorsStr.toLowerCase().includes("limit") || errorsStr.toLowerCase().includes("rate") || errorsStr.toLowerCase().includes("requests") || (data?.errors && typeof data.errors === 'object' && Object.values(data.errors).some((e: any) => String(e).toLowerCase().includes('limit')));
+        const isInvalid = response.status === 401 || response.status === 403 || errorsStr.toLowerCase().includes("token") || errorsStr.toLowerCase().includes("key") || errorsStr.toLowerCase().includes("invalid") || errorsStr.toLowerCase().includes("active");
+
+        footballResult = {
+          name: "مزود البيانات الكروي (API-Football)",
+          status: isRate ? "RATE LIMITED ⚠️" : (isInvalid ? "INVALID KEY ❌" : "NETWORK ERROR ⚠️"),
+          isConfigured: true,
+          isValid: !isInvalid,
+          isQuotaExceeded: isRate,
+          lastSuccess: lastSuccessRegistry.apiFootball,
+          error: errorsStr || `رمز الخطأ المسترد: ${response.status}`,
+        };
+      }
+    } catch (err: any) {
+      const isAbort = err.name === 'AbortError' || err.message?.includes('aborted');
+      footballResult = {
+        name: "مزود البيانات الكروي (API-Football)",
+        status: "NETWORK ERROR ⚠️",
+        isConfigured: true,
+        isValid: true,
+        isQuotaExceeded: false,
+        lastSuccess: lastSuccessRegistry.apiFootball,
+        error: isAbort ? "انتهت مهلة استجابة مزود البيانات (6 ثواني) لضغط الطلبات" : (err.message || "فشلت عملية الربط الشبكية بمزود البيانات الكوري المباشر"),
+      };
+    }
+  }
+
+  // 3. Google Gemini AI Connection Test
+  let geminiResult = {
+    name: "محرك الذكاء الاصطناعي (Google Gemini)",
+    status: "INVALID KEY ❌",
+    isConfigured: !!process.env.GEMINI_API_KEY,
+    isValid: false,
+    isQuotaExceeded: false,
+    lastSuccess: lastSuccessRegistry.gemini,
+    error: "مفتاح الذكاء الاصطناعي مفقود من متغيرات بيئة السيرفر",
+  };
+
+  if (process.env.GEMINI_API_KEY) {
+    try {
+      const controller = new AbortController();
+      const timeoutSec = setTimeout(() => controller.abort(), 6000);
+      
+      // Ping Gemini model
+      const pingResult = await ai.models.generateContent({
+        model: "gemini-2.0-flash",
+        contents: "Ping",
+      });
+      
+      clearTimeout(timeoutSec);
+
+      if (pingResult && pingResult.text) {
+        lastSuccessRegistry.gemini = new Date().toISOString();
+        geminiResult = {
+          name: "محرك الذكاء الاصطناعي (Google Gemini)",
+          status: "CONNECTED ✅",
+          isConfigured: true,
+          isValid: true,
+          isQuotaExceeded: false,
+          lastSuccess: lastSuccessRegistry.gemini,
+          error: "نموذج الذكاء الاصطناعي نشط وبث التوقعات الكروية يعمل بشكل سليم",
+        };
+      } else {
+        geminiResult = {
+          name: "محرك الذكاء الاصطناعي (Google Gemini)",
+          status: "NETWORK ERROR ⚠️",
+          isConfigured: true,
+          isValid: true,
+          isQuotaExceeded: false,
+          lastSuccess: lastSuccessRegistry.gemini,
+          error: "استجابة فارغة أو غير مفهومة ممررة من واجهات Gemini API",
+        };
+      }
+    } catch (err: any) {
+      const errStr = err.message || "";
+      const isRate = errStr.includes("429") || errStr.includes("RESOURCE_EXHAUSTED") || errStr.toLowerCase().includes("quota") || errStr.toLowerCase().includes("rate limit");
+      const isInvalid = errStr.includes("API_KEY_INVALID") || errStr.includes("400") || errStr.toLowerCase().includes("forbidden") || errStr.toLowerCase().includes("unauthorized") || errStr.toLowerCase().includes("not found");
+      const isAbort = err.name === 'AbortError' || errStr.includes('aborted');
+
+      geminiResult = {
+        name: "محرك الذكاء الاصطناعي (Google Gemini)",
+        status: isRate ? "RATE LIMITED ⚠️" : (isInvalid ? "INVALID KEY ❌" : "NETWORK ERROR ⚠️"),
+        isConfigured: true,
+        isValid: !isInvalid,
+        isQuotaExceeded: isRate,
+        lastSuccess: lastSuccessRegistry.gemini,
+        error: isAbort ? "انتهت مهلة الاتصال بالخادم الذكي (6 ثواني)" : errStr,
+      };
+    }
+  }
+
+  // 4. Server Node (Render) Core Health
+  const serverResult = {
+    name: "خادم تشغيل وموجهات السيرفر (Server Node)",
+    status: "CONNECTED ✅",
+    isConfigured: true,
+    isValid: true,
+    isQuotaExceeded: false,
+    lastSuccess: new Date().toISOString(),
+    error: `السيرفر مستقر ويعمل منذ ${Math.round(process.uptime())} ثانية | حجم استهلاك الرام المقدر: ${Math.round(process.memoryUsage().heapUsed / 1024 / 1024)} ميجابايت`
+  };
+
+  // 5. Memory Cache Proxy (Hit/Miss logs) Health
+  const cacheResult = {
+    name: "قناة الذاكرة الرديفة والمخبأة (InMemory Cache)",
+    status: "CONNECTED ✅",
+    isConfigured: true,
+    isValid: true,
+    isQuotaExceeded: false,
+    lastSuccess: new Date().toISOString(),
+    error: `الذاكرة مخبأة بالكامل لن تفقد | إجمالي الكائنات المؤقتة النشطة: ${Object.keys(proxyCache).length} طلب صامت`
+  };
+
+  res.json({
+    apiFootball: footballResult,
+    gemini: geminiResult,
+    firebase: firebaseResult,
+    server: serverResult,
+    cache: cacheResult,
+  });
+});
+
 // A robust client-side proxy route for API-Football to completely avoid CORS and Network Errors in the browser
 app.all("/api/football-api/*", async (req, res) => {
   const subPath = req.params[0] || "";
   const queryString = new URLSearchParams(req.query as any).toString();
   
   // Try to read the master/active API key
-  const apiKey = (process.env.VITE_API_KEY || "c68e7851bdbe53f596f0d79299d86d57").trim();
+  const apiKey = (process.env.VITE_API_KEY || "").trim();
   const isApiSports = apiKey.length === 32;
   const isRapidApiFootball = apiKey.length === 50;
 
@@ -850,7 +1159,9 @@ async function syncSportsDataWithAI(target: 'MATCHES' | 'NEWS' | 'BOTH' = 'BOTH'
         text = text.replace(/```json/gi, '').replace(/```/g, '').trim();
         const matchData = JSON.parse(text);
         if (matchData.matches && Array.isArray(matchData.matches)) {
-          console.log(`AI found ${matchData.matches.length} matches. Syncing with Firestore...`);
+          console.log(`AI found ${matchData.matches.length} matches. Syncing with Firestore in batch...`);
+          const matchBatch = firestore.batch();
+          let matchCount = 0;
           for (const match of matchData.matches) {
             // توليد معرف فريد وثابت للمباراة
             const matchId = `${match.league}-${match.homeTeam}-${match.awayTeam}-${todayStr.replace(/\s/g, '_')}`.replace(/[^a-zA-Z0-9]/g, '_').toLowerCase();
@@ -888,11 +1199,17 @@ async function syncSportsDataWithAI(target: 'MATCHES' | 'NEWS' | 'BOTH' = 'BOTH'
               finalStartTime = new Date().toISOString();
             }
 
-            await firestore.collection('matches').doc(matchId).set({
+            const matchRef = firestore.collection('matches').doc(matchId);
+            matchBatch.set(matchRef, {
               ...match,
               startTime: finalStartTime,
               updatedAt: new Date().toISOString()
             }, { merge: true });
+            matchCount++;
+          }
+          if (matchCount > 0) {
+            await matchBatch.commit();
+            console.log(`[AI Sync] Successfully committed ${matchCount} matches in 1 batch.`);
           }
         }
       } catch (e: any) {
@@ -935,13 +1252,16 @@ async function syncSportsDataWithAI(target: 'MATCHES' | 'NEWS' | 'BOTH' = 'BOTH'
       const newsData = JSON.parse(text);
       if (newsData.news && Array.isArray(newsData.news)) {
         console.log(`AI found ${newsData.news.length} news items. Syncing with Firestore...`);
+        const newsBatch = firestore.batch();
+        let newsCount = 0;
         for (const article of newsData.news) {
           const newsId = article.title.substring(0, 40).replace(/[^a-zA-Z0-9]/g, '_').toLowerCase();
           
           const isValidUrl = (url: string) => url && url.startsWith('http') && !url.includes('example.com') && !url.includes('REAL_URL');
           const finalImage = isValidUrl(article.image) ? article.image : 'https://images.unsplash.com/photo-1508098682722-e99c43a406b2?q=80&w=800';
 
-          await firestore.collection('news').doc(newsId).set({
+          const newsRef = firestore.collection('news').doc(newsId);
+          newsBatch.set(newsRef, {
             title: article.title,
             content: article.content || article.summary,
             image: finalImage,
@@ -949,6 +1269,11 @@ async function syncSportsDataWithAI(target: 'MATCHES' | 'NEWS' | 'BOTH' = 'BOTH'
             author: 'كورة لايف AI',
             createdAt: new Date().toISOString()
           }, { merge: true });
+          newsCount++;
+        }
+        if (newsCount > 0) {
+          await newsBatch.commit();
+          console.log(`[AI Sync] Successfully committed ${newsCount} news articles in 1 batch.`);
         }
       }
     } catch (e: any) {
@@ -972,10 +1297,10 @@ async function syncSportsDataWithAI(target: 'MATCHES' | 'NEWS' | 'BOTH' = 'BOTH'
 }
 }
 
-// تشغيل المزامنة كل ساعة لتحديث النتائج والمباريات لتوفير الكوتا بالخلفية
-setInterval(syncSportsDataWithAI, 60 * 60 * 1000);
-// تأخير التشغيل الفوري عند بدء التشغيل لتجنب جلب البيانات المكرر أثناء التطوير والتعديل
-setTimeout(syncSportsDataWithAI, 30000);
+// تشغيل المزامنة كل 12 ساعة لتحديث النتائج والمباريات لتوفير الكوتا بالخلفية
+setInterval(syncSportsDataWithAI, 12 * 60 * 60 * 1000);
+// تأخير التشغيل الفوري عند بدء التشغيل لتجنب ضغط البداية ومنع الاستهلاك السريع للكوتا أثناء التطوير والتعديل
+setTimeout(syncSportsDataWithAI, 15 * 60 * 1000); // 15 mins delay
 
 /**
  * نظام إدارة مزامنة البيانات من مصادر متعددة
@@ -995,7 +1320,7 @@ async function syncFromSource(source: any) {
       await syncSportsDataWithAI(source.target); // استخدام الدالة الموجودة حالياً لـ Gemini مع تمرير الهدف
     } else if (source.provider === 'FOOTBALL_API') {
       // استخدام المفتاح الفعال المعتمد لجلب البيانات الحقيقية مباشرة
-      const apiKey = 'c68e7851bdbe53f596f0d79299d86d57';
+      const apiKey = (process.env.VITE_API_KEY || "").trim();
       const isApiSports = apiKey.length === 32;
 
       const headers: Record<string, string> = {};
@@ -1024,9 +1349,13 @@ async function syncFromSource(source: any) {
         const todayStr = new Date().toLocaleDateString('en-GB', { day: '2-digit', month: 'long', year: 'numeric' });
         newlyFetchedCount = data.response.length;
         
+        const apiBatch = firestore.batch();
+        let apiCount = 0;
+        
         for (const f of data.response) {
           const matchId = `${f.league.name}-${f.teams.home.name}-${f.teams.away.name}-${todayStr.replace(/\\s/g, '_')}`.replace(/[^a-zA-Z0-9]/g, '_').toLowerCase();
-          await firestore.collection('matches').doc(matchId).set({
+          const matchRef = firestore.collection('matches').doc(matchId);
+          apiBatch.set(matchRef, {
             homeTeam: f.teams.home.name,
             awayTeam: f.teams.away.name,
             homeLogo: f.teams.home.logo,
@@ -1039,6 +1368,11 @@ async function syncFromSource(source: any) {
             startTime: f.fixture.date,
             updatedAt: new Date().toISOString()
           }, { merge: true });
+          apiCount++;
+        }
+        if (apiCount > 0) {
+          await apiBatch.commit();
+          console.log(`[Source Engine] Committed ${apiCount} football API matches via 1 batch write.`);
         }
       }
     } else if (source.provider === 'THESPORTSDB') {
@@ -1056,9 +1390,13 @@ async function syncFromSource(source: any) {
         const todayStr = new Date().toLocaleDateString('en-GB', { day: '2-digit', month: 'long', year: 'numeric' });
         newlyFetchedCount = data.events.length;
         
+        const dbBatch = firestore.batch();
+        let dbCount = 0;
+        
         for (const f of data.events) {
           const matchId = `${f.strLeague}-${f.strHomeTeam}-${f.strAwayTeam}-${todayStr.replace(/\\s/g, '_')}`.replace(/[^a-zA-Z0-9]/g, '_').toLowerCase();
-          await firestore.collection('matches').doc(matchId).set({
+          const matchRef = firestore.collection('matches').doc(matchId);
+          dbBatch.set(matchRef, {
             homeTeam: f.strHomeTeam,
             awayTeam: f.strAwayTeam,
             homeLogo: f.strHomeTeamBadge || '',
@@ -1071,6 +1409,11 @@ async function syncFromSource(source: any) {
             startTime: f.strTimestamp || (f.dateEvent + 'T' + f.strTime),
             updatedAt: new Date().toISOString()
           }, { merge: true });
+          dbCount++;
+        }
+        if (dbCount > 0) {
+          await dbBatch.commit();
+          console.log(`[Source Engine] Committed ${dbCount} TheSportsDB matches via 1 batch write.`);
         }
       }
     } else if (source.provider === 'NEWS_API') {
@@ -1088,12 +1431,16 @@ async function syncFromSource(source: any) {
         console.log(`[Source Engine] NewsAPI found ${data.articles.length} news articles.`);
         const numToSave = Math.min(data.articles.length, 20);
         newlyFetchedCount = numToSave;
+        
+        const newsApiBatch = firestore.batch();
+        let newsApiCount = 0;
 
         for (const article of data.articles.slice(0, numToSave)) { // limit to 20 to avoid large batches constantly
           if (!article.urlToImage || !article.title) continue;
           
           const newsId = article.url.replace(/[^a-zA-Z0-9]/g, '_').toLowerCase().substring(0, 50);
-          await firestore.collection('news').doc(newsId).set({
+          const newsRef = firestore.collection('news').doc(newsId);
+          newsApiBatch.set(newsRef, {
             title: article.title,
             content: article.content || article.description || article.title,
             image: article.urlToImage,
@@ -1102,6 +1449,11 @@ async function syncFromSource(source: any) {
             createdAt: new Date(article.publishedAt).toISOString(),
             link: article.url
           }, { merge: true });
+          newsApiCount++;
+        }
+        if (newsApiCount > 0) {
+          await newsApiBatch.commit();
+          console.log(`[Source Engine] Committed ${newsApiCount} NewsAPI articles via 1 batch write.`);
         }
       }
     } else if (source.provider === 'FOOTBALL_DATA') {
@@ -1130,11 +1482,15 @@ async function syncFromSource(source: any) {
         const todayStr = new Date().toLocaleDateString('en-GB', { day: '2-digit', month: 'long', year: 'numeric' });
         newlyFetchedCount = data.matches.length;
         
+        const fdBatch = firestore.batch();
+        let fdCount = 0;
+        
         for (const f of data.matches) {
           const matchId = `${f.competition?.name || 'unknown'}-${f.homeTeam?.name || 'home'}-${f.awayTeam?.name || 'away'}-${todayStr.replace(/\\s/g, '_')}`.replace(/[^a-zA-Z0-9]/g, '_').toLowerCase();
+          const matchRef = firestore.collection('matches').doc(matchId);
           
-          await firestore.collection('matches').doc(matchId).set({
-            homeTeam: f.homeTeam?.name || 'عير محدد',
+          fdBatch.set(matchRef, {
+            homeTeam: f.homeTeam?.name || 'غير محدد',
             awayTeam: f.awayTeam?.name || 'غير محدد',
             homeLogo: f.homeTeam?.crest || '',
             awayLogo: f.awayTeam?.crest || '',
@@ -1146,6 +1502,11 @@ async function syncFromSource(source: any) {
             startTime: f.utcDate,
             updatedAt: new Date().toISOString()
           }, { merge: true });
+          fdCount++;
+        }
+        if (fdCount > 0) {
+          await fdBatch.commit();
+          console.log(`[Source Engine] Committed ${fdCount} Football-Data matches via 1 batch write.`);
         }
       }
     }
@@ -1179,24 +1540,31 @@ async function startSourceEngine() {
   if (!firestore) return;
   
   try {
-    console.log("[Source Engine] Starting Global Sync Engine...");
+    console.log("[Source Engine] Starting Global Sync Engine with throttled staggering...");
     
     // قراءة المصادر من Firestore
     const sourcesSnapshot = await firestore.collection('sources').get();
     console.log(`[Source Engine] Found ${sourcesSnapshot.size} sources.`);
-    sourcesSnapshot.forEach((snapshotDoc: any) => {
+    
+    const sourcesDocs = sourcesSnapshot.docs || [];
+    sourcesDocs.forEach((snapshotDoc: any, index: number) => {
       const source = { id: snapshotDoc.id, ...snapshotDoc.data() };
       if (source.enabled) {
-        const freqMs = (source.config.frequency || 60) * 60 * 1000;
+        // Force minimum frequency of 4 hours to preserve free tier resources
+        const freqMs = Math.max(source.config?.frequency || 6, 4) * 60 * 60 * 1000;
         
         // إزالة المؤقت القديم إذا وجد
         if (sourceTimers[source.id]) clearInterval(sourceTimers[source.id]);
         
-        // تشغيل مزامنة أولية بعد دقيقة
-        setTimeout(() => syncFromSource(source), 60000);
+        // تشغيل مزامنة أولية بعد 5 دقائق ومتباعدة بدقيقتين لتجنب تضارب الطلبات
+        setTimeout(() => {
+          syncFromSource(source).catch(err => console.error(`[Source Engine] Initial sync error: ${err.message}`));
+        }, 5 * 60 * 1000 + index * 120000);
         
         // إعداد المزامنة الدورية
-        sourceTimers[source.id] = setInterval(() => syncFromSource(source), freqMs);
+        sourceTimers[source.id] = setInterval(() => {
+          syncFromSource(source).catch(err => console.error(`[Source Engine] Interval sync error: ${err.message}`));
+        }, freqMs);
       }
     });
   } catch (error: any) {
@@ -1228,17 +1596,17 @@ app.post("/api/sources/sync", async (req, res) => {
   }
 });
 
-// تشغيل محرك المصادر بعد الجاهزية
-setTimeout(startSourceEngine, 10000);
+// تشغيل محرك المصادر بهدوء بعد 5 دقائق من الجاهزية والاستقرار لتجنب ضغط التشغيل الأولي
+setTimeout(startSourceEngine, 5 * 60 * 1000);
 
-// تشغيل وتحديث مزامنة تغذيات RSS بانتظام كل 15 دقيقة
+// تشغيل وتحديث مزامنة تغذيات RSS بانتظام كل ساعة بدلاً من كل 10 دقائق لتفادي استهلاك الكوتا والاتصال
 setTimeout(async () => {
   try {
     await syncRssFeeds(firestore);
   } catch (err: any) {
     console.error('[RSS Cron] Initial scan failed:', err.message);
   }
-}, 12000);
+}, 4 * 60 * 1000); // البدء بعد 4 دقائق
 
 setInterval(async () => {
   try {
@@ -1246,7 +1614,7 @@ setInterval(async () => {
   } catch (err: any) {
     console.error('[RSS Cron] Scheduled scan failed:', err.message);
   }
-}, 10 * 60 * 1000);
+}, 60 * 60 * 1000); // التحديث كل ساعة
 
 // Vite Config
 async function startServer() {

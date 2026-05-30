@@ -1,13 +1,14 @@
 import axios from 'axios';
 
 // Pull keys safely from environmental configuration
-const ENV_API_KEY = 'c68e7851bdbe53f596f0d79299d86d57';
+const ENV_API_KEY = (import.meta.env.VITE_API_KEY || '').trim();
 const NATIVE_HOST = 'v3.football.api-sports.io';
 const PROXY_HOST = 'free-api-live-football-data.p.rapidapi.com';
 
 // Dynamic API Key override (allows secure configuration from the UI)
 export function getActiveApiKey(): string {
-  return ENV_API_KEY;
+  const userKey = typeof window !== 'undefined' ? localStorage.getItem('korea90_user_api_key') : null;
+  return (userKey || import.meta.env.VITE_API_KEY || '').trim();
 }
 
 // Helper to ensure any base URL has a scheme (e.g., https://)
@@ -789,6 +790,30 @@ apiClient.get = async function<T = any>(url: string, config?: any): Promise<any>
   const params = config?.params || {};
   const cacheKey = getCacheKey(url, params);
   const ttl = getTTL(url, params);
+
+  // If there is no API key configured, return high-fidelity mock fallback directly!
+  const currentKey = getActiveApiKey();
+  if (!currentKey) {
+    const mockData = generateMockFallback(url, params);
+    const logId = apiTracker.addLog({
+      endpoint: url,
+      method: 'GET',
+      params: { ...params },
+      status: 'success',
+      statusText: 'مسترد من تراجع السلامة فائقة الدقة (Mock Fallback)',
+      isCached: false,
+      statusCode: 200,
+      dataSize: JSON.stringify(mockData).length,
+      responseSample: mockData.response?.slice(0, 1) || null
+    });
+    return {
+      data: mockData,
+      status: 200,
+      statusText: 'OK (Mock Fallback)',
+      headers: {},
+      config: config || {}
+    };
+  }
 
   // 1. Caching layer hit
   const cachedData = getCachedItem(cacheKey);

@@ -29,27 +29,33 @@ export function ErrorProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const showError = useCallback((error: any) => {
-    let message = 'حدث خطأ غير متوقع. يرجى المحاولة مرة أخرى.';
+    // Log all errors securely in console only
+    console.error("[System Core Error Interceptor]:", error);
+
+    let message = 'حدث خطأ في الاتصال بالخدمة. البيانات معروضة بالاعتماد على التراجع المحلي المستقر.';
     
-    if (typeof error === 'string') {
-      message = error;
+    const errStr = typeof error === 'string' ? error : (error?.message || '');
+    if (
+      errStr.includes('NO_API_KEY') || 
+      errStr.includes('لم يتم إعداد') || 
+      errStr.includes('Unauthorized') || 
+      errStr.includes('401') || 
+      errStr.includes('API key') ||
+      errStr.includes('footballApiStatus')
+    ) {
+      message = 'لم يتم إعداد مصدر البيانات بعد. يرجى إضافة مفاتيح البيئة من إعدادات Vercel.';
+    } else if (typeof error === 'string') {
+      // Suppress highly technical strings or direct DB paths
+      if (!error.includes('Object') && !error.includes('Error') && !error.includes('/') && !error.includes('firestore')) {
+        message = error;
+      }
     } else if (error?.message) {
-      // Try to parse Firestore JSON error or handle standard Error
-      try {
-        const parsed = JSON.parse(error.message);
-        if (parsed.error?.includes('permission-denied')) {
-          message = 'ليس لديك الصلاحية الكافية للقيام بهذه العملية.';
-        } else {
-          message = parsed.error || message;
-        }
-      } catch {
-        if (error.message.includes('permission-denied')) {
-          message = 'عذراً، لا نملك صلحية الوصول لهذه البيانات.';
-        } else if (error.message.includes('network-request-failed')) {
-          message = 'خطأ في الاتصال بالشبكة. يرجى التحقق من الإنترنت.';
-        } else {
-          message = error.message;
-        }
+      if (error.message.includes('permission-denied') || error.message.includes('insufficient permissions')) {
+        message = 'عذراً، لا نملك صلاحية الوصول لهذه البيانات الحساسة حالياً.';
+      } else if (error.message.includes('network-request-failed') || error.message.includes('Failed to fetch')) {
+        message = 'خطأ في الاتصال بالشبكة. يرجى التحقق من جودة موجز الإنترنت الخاص بك.';
+      } else if (error.message.includes('RESOURCE_EXHAUSTED')) {
+        message = 'تم تجاوز حصة العمل السحابية لقاعدة البيانات الكبرى. متاح العمل بنظام التراجع الفائق الكافي.';
       }
     }
     

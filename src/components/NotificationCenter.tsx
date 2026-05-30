@@ -324,19 +324,19 @@ export default function NotificationCenter() {
                       </div>
                       <button
                         onClick={() => toggleSubscription('onlyFavoriteTeams')}
-                        className={`w-11 h-6 rounded-full p-0.5 border transition-all duration-300 flex items-center cursor-pointer relative shadow-inner shrink-0 ${
+                        className={`w-11 h-6 rounded-full transition-all duration-300 flex items-center cursor-pointer relative shadow-inner shrink-0 ${
                           subscriptions.onlyFavoriteTeams 
-                            ? 'bg-primary/20 border-primary/40 justify-end' 
-                            : 'bg-black/30 border-white/10 justify-start'
+                            ? 'bg-[#1bc480] shadow-[0_0_10px_rgba(27,196,128,0.35)]' 
+                            : 'bg-white/10'
                         }`}
                         id="silent-mode-toggle-btn"
                         aria-label="الوضع الصامت للأهداف غير الهامة"
                       >
                         <span 
-                          className={`w-4.5 h-4.5 rounded-full transition-all duration-300 ${
+                          className={`absolute top-[3px] w-4.5 h-4.5 rounded-full transition-all duration-300 bg-white shadow-md ${
                             subscriptions.onlyFavoriteTeams 
-                              ? 'bg-primary shadow-[0_0_8px_rgba(255,255,255,0.4)]' 
-                              : 'bg-gray-500'
+                              ? 'right-[3px]' 
+                              : 'right-[23px]'
                           }`} 
                         />
                       </button>
@@ -350,30 +350,30 @@ export default function NotificationCenter() {
                       
                       <div className="grid grid-cols-3 gap-2 max-h-[175px] overflow-y-auto p-1.5 bg-black/35 rounded-2xl border border-white/5 scrollbar-thin scrollbar-thumb-white/10">
                         {FAMOUS_TEAMS.map((team) => {
-                          const isFav = favoriteTeamIds?.includes(team.id);
-                          return (
-                            <button
-                              key={team.id}
-                              onClick={() => toggleFavoriteTeam(team.id)}
-                              className={`p-2.5 rounded-2xl border flex flex-col items-center justify-center gap-1.5 text-center cursor-pointer transition-all duration-300 transform hover:scale-[1.03] active:scale-95 relative overflow-hidden
-                                ${isFav 
-                                  ? 'bg-primary/10 border-primary/30 text-primary shadow-sm' 
-                                  : 'bg-white/3 border-white/5 text-gray-400 hover:border-white/10 hover:text-white'
-                                }
-                              `}
-                            >
-                              {isFav && (
-                                <span className="absolute top-1 right-1 w-2 h-2 bg-primary rounded-full animate-pulse shadow-[0_0_8px_rgba(var(--color-primary),0.8)]" />
-                              )}
-                              <img 
-                                src={team.logo} 
-                                alt={team.name} 
-                                className="w-7 h-7 object-contain"
-                                referrerPolicy="no-referrer"
-                              />
-                              <span className="text-[9px] font-black tracking-tight truncate w-full">{team.name}</span>
-                            </button>
-                          );
+                           const isFav = favoriteTeamIds?.includes(team.id);
+                           return (
+                             <button
+                               key={team.id}
+                               onClick={() => toggleFavoriteTeam(team.id)}
+                               className={`p-2.5 rounded-2xl border flex flex-col items-center justify-center gap-1.5 text-center cursor-pointer transition-all duration-300 transform hover:scale-[1.03] active:scale-95 relative overflow-hidden
+                                 ${isFav 
+                                   ? 'bg-primary/10 border-primary/30 text-primary shadow-sm' 
+                                   : 'bg-white/3 border-white/5 text-gray-400 hover:border-white/10 hover:text-white'
+                                 }
+                               `}
+                             >
+                               {isFav && (
+                                 <span className="absolute top-1 right-1 w-2 h-2 bg-primary rounded-full animate-pulse shadow-[0_0_8px_rgba(var(--color-primary),0.8)]" />
+                               )}
+                               <img 
+                                 src={team.logo} 
+                                 alt={team.name} 
+                                 className="w-7 h-7 object-contain"
+                                 referrerPolicy="no-referrer"
+                               />
+                               <span className="text-[9px] font-black tracking-tight truncate w-full">{team.name}</span>
+                             </button>
+                           );
                         })}
                       </div>
                     </div>
@@ -391,18 +391,18 @@ export default function NotificationCenter() {
                       </div>
                       <button
                         onClick={() => toggleSubscription('news')}
-                        className={`w-11 h-6 rounded-full p-0.5 border transition-all duration-300 flex items-center cursor-pointer relative shadow-inner shrink-0 ${
+                        className={`w-11 h-6 rounded-full transition-all duration-300 flex items-center cursor-pointer relative shadow-inner shrink-0 ${
                           subscriptions.news 
-                            ? 'bg-primary/20 border-primary/40 justify-end' 
-                            : 'bg-black/30 border-white/10 justify-start'
+                            ? 'bg-[#1bc480] shadow-[0_0_10px_rgba(27,196,128,0.35)]' 
+                            : 'bg-white/10'
                         }`}
                         aria-label="موجز الأخبار والتحليلات العاجلة"
                       >
                         <span 
-                          className={`w-4.5 h-4.5 rounded-full transition-all duration-300 ${
+                          className={`absolute top-[3px] w-4.5 h-4.5 rounded-full transition-all duration-300 bg-white shadow-md ${
                             subscriptions.news 
-                              ? 'bg-primary shadow-[0_0_8px_rgba(255,255,255,0.4)]' 
-                              : 'bg-gray-500'
+                              ? 'right-[3px]' 
+                              : 'right-[23px]'
                           }`} 
                         />
                       </button>
@@ -416,18 +416,18 @@ export default function NotificationCenter() {
                       </div>
                       <button
                         onClick={() => toggleSubscription('goals')}
-                        className={`w-11 h-6 rounded-full p-0.5 border transition-all duration-300 flex items-center cursor-pointer relative shadow-inner shrink-0 ${
+                        className={`w-11 h-6 rounded-full transition-all duration-300 flex items-center cursor-pointer relative shadow-inner shrink-0 ${
                           subscriptions.goals 
-                            ? 'bg-primary/20 border-primary/40 justify-end' 
-                            : 'bg-black/30 border-white/10 justify-start'
+                            ? 'bg-[#1bc480] shadow-[0_0_10px_rgba(27,196,128,0.35)]' 
+                            : 'bg-white/10'
                         }`}
                         aria-label="أهداف المباريات المباشرة"
                       >
                         <span 
-                          className={`w-4.5 h-4.5 rounded-full transition-all duration-300 ${
+                          className={`absolute top-[3px] w-4.5 h-4.5 rounded-full transition-all duration-300 bg-white shadow-md ${
                             subscriptions.goals 
-                              ? 'bg-primary shadow-[0_0_8px_rgba(255,255,255,0.4)]' 
-                              : 'bg-gray-500'
+                              ? 'right-[3px]' 
+                              : 'right-[23px]'
                           }`} 
                         />
                       </button>
@@ -441,18 +441,18 @@ export default function NotificationCenter() {
                       </div>
                       <button
                         onClick={() => toggleSubscription('results')}
-                        className={`w-11 h-6 rounded-full p-0.5 border transition-all duration-300 flex items-center cursor-pointer relative shadow-inner shrink-0 ${
+                        className={`w-11 h-6 rounded-full transition-all duration-300 flex items-center cursor-pointer relative shadow-inner shrink-0 ${
                           subscriptions.results 
-                            ? 'bg-primary/20 border-primary/40 justify-end' 
-                            : 'bg-black/30 border-white/10 justify-start'
+                            ? 'bg-[#1bc480] shadow-[0_0_10px_rgba(27,196,128,0.35)]' 
+                            : 'bg-white/10'
                         }`}
                         aria-label="صفارات النهاية والنتائج الرسمية"
                       >
                         <span 
-                          className={`w-4.5 h-4.5 rounded-full transition-all duration-300 ${
+                          className={`absolute top-[3px] w-4.5 h-4.5 rounded-full transition-all duration-300 bg-white shadow-md ${
                             subscriptions.results 
-                              ? 'bg-primary shadow-[0_0_8px_rgba(255,255,255,0.4)]' 
-                              : 'bg-gray-500'
+                              ? 'right-[3px]' 
+                              : 'right-[23px]'
                           }`} 
                         />
                       </button>
@@ -466,18 +466,18 @@ export default function NotificationCenter() {
                       </div>
                       <button
                         onClick={() => toggleSubscription('cardsAndSubs')}
-                        className={`w-11 h-6 rounded-full p-0.5 border transition-all duration-300 flex items-center cursor-pointer relative shadow-inner shrink-0 ${
+                        className={`w-11 h-6 rounded-full transition-all duration-300 flex items-center cursor-pointer relative shadow-inner shrink-0 ${
                           subscriptions.cardsAndSubs 
-                            ? 'bg-primary/20 border-primary/40 justify-end' 
-                            : 'bg-black/30 border-white/10 justify-start'
+                            ? 'bg-[#1bc480] shadow-[0_0_10px_rgba(27,196,128,0.35)]' 
+                            : 'bg-white/10'
                         }`}
                         aria-label="البطاقات والتغييرات التكتيكية"
                       >
                         <span 
-                          className={`w-4.5 h-4.5 rounded-full transition-all duration-300 ${
+                          className={`absolute top-[3px] w-4.5 h-4.5 rounded-full transition-all duration-300 bg-white shadow-md ${
                             subscriptions.cardsAndSubs 
-                              ? 'bg-primary shadow-[0_0_8px_rgba(255,255,255,0.4)]' 
-                              : 'bg-gray-500'
+                              ? 'right-[3px]' 
+                              : 'right-[23px]'
                           }`} 
                         />
                       </button>
@@ -501,18 +501,18 @@ export default function NotificationCenter() {
                       </div>
                       <button
                         onClick={() => toggleSubscription('audioEffects')}
-                        className={`w-11 h-6 rounded-full p-0.5 border transition-all duration-300 flex items-center cursor-pointer relative shadow-inner shrink-0 ${
+                        className={`w-11 h-6 rounded-full transition-all duration-300 flex items-center cursor-pointer relative shadow-inner shrink-0 ${
                           subscriptions.audioEffects 
-                            ? 'bg-primary/20 border-primary/40 justify-end' 
-                            : 'bg-black/30 border-white/10 justify-start'
+                            ? 'bg-[#1bc480] shadow-[0_0_10px_rgba(27,196,128,0.35)]' 
+                            : 'bg-white/10'
                         }`}
                         aria-label="المؤثرات الصوتية للأحداث"
                       >
                         <span 
-                          className={`w-4.5 h-4.5 rounded-full transition-all duration-300 ${
+                          className={`absolute top-[3px] w-4.5 h-4.5 rounded-full transition-all duration-300 bg-white shadow-md ${
                             subscriptions.audioEffects 
-                              ? 'bg-primary shadow-[0_0_8px_rgba(255,255,255,0.4)]' 
-                              : 'bg-gray-500'
+                              ? 'right-[3px]' 
+                              : 'right-[23px]'
                           }`} 
                         />
                       </button>
@@ -531,18 +531,18 @@ export default function NotificationCenter() {
                       </div>
                       <button
                         onClick={() => toggleSubscription('arabicVoiceCommentator')}
-                        className={`w-11 h-6 rounded-full p-0.5 border transition-all duration-300 flex items-center cursor-pointer relative shadow-inner shrink-0 ${
+                        className={`w-11 h-6 rounded-full transition-all duration-300 flex items-center cursor-pointer relative shadow-inner shrink-0 ${
                           subscriptions.arabicVoiceCommentator 
-                            ? 'bg-primary/20 border-primary/40 justify-end' 
-                            : 'bg-black/30 border-white/10 justify-start'
+                            ? 'bg-[#1bc480] shadow-[0_0_10px_rgba(27,196,128,0.35)]' 
+                            : 'bg-white/10'
                         }`}
                         aria-label="معلق صوتي ذكي عربي"
                       >
                         <span 
-                          className={`w-4.5 h-4.5 rounded-full transition-all duration-300 ${
+                          className={`absolute top-[3px] w-4.5 h-4.5 rounded-full transition-all duration-300 bg-white shadow-md ${
                             subscriptions.arabicVoiceCommentator 
-                              ? 'bg-primary shadow-[0_0_8px_rgba(255,255,255,0.4)]' 
-                              : 'bg-gray-500'
+                              ? 'right-[3px]' 
+                              : 'right-[23px]'
                           }`} 
                         />
                       </button>

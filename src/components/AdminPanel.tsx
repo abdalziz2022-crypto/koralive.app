@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { collection, addDoc, onSnapshot, query, orderBy, updateDoc, doc, deleteDoc, setDoc, getDoc } from 'firebase/firestore';
 import { db, auth, handleFirestoreError, OperationType } from '../firebase';
 import { useAuthState } from 'react-firebase-hooks/auth';
@@ -34,6 +35,7 @@ type Tab =
   | 'USERS_LIST' | 'API_DIAGNOSTICS';
 
 export default function AdminPanel() {
+  const navigate = useNavigate();
   const [user] = useAuthState(auth);
   const { settings: globalSettings } = useSettings();
   const { showError, showToast } = useError();
@@ -64,6 +66,61 @@ export default function AdminPanel() {
   const [syncCount, setSyncCount] = useState<number>(0);
   const [syncError, setSyncError] = useState<string | null>(null);
 
+  // Core diagnostics and server key tracking states
+  const [serverDiagnostics, setServerDiagnostics] = useState<{
+    viteApiKeyStatus: boolean;
+    geminiApiKeyStatus: boolean;
+    firebaseStatus: boolean;
+    firebaseQuotaExceeded: boolean;
+    footballApiStatus: boolean;
+    footballApiMessage: string;
+    serverConnection: boolean;
+    isLoading: boolean;
+  }>({
+    viteApiKeyStatus: false,
+    geminiApiKeyStatus: false,
+    firebaseStatus: false,
+    firebaseQuotaExceeded: false,
+    footballApiStatus: false,
+    footballApiMessage: '',
+    serverConnection: false,
+    isLoading: true
+  });
+
+  const loadServerDiagnostics = async () => {
+    setServerDiagnostics(prev => ({ ...prev, isLoading: true }));
+    try {
+      const res = await fetch('/api/diagnostics');
+      if (res.ok) {
+        const data = await res.json();
+        setServerDiagnostics({
+          viteApiKeyStatus: !!data.viteApiKeyStatus,
+          geminiApiKeyStatus: !!data.geminiApiKeyStatus,
+          firebaseStatus: !!data.firebaseStatus,
+          firebaseQuotaExceeded: !!data.firebaseQuotaExceeded,
+          footballApiStatus: !!data.footballApiStatus,
+          footballApiMessage: data.footballApiMessage || '',
+          serverConnection: true,
+          isLoading: false
+        });
+      } else {
+        throw new Error('فشل الرد من خادم التشخيص');
+      }
+    } catch (e: any) {
+      console.warn("Error fetching server diagnostics:", e);
+      setServerDiagnostics({
+        viteApiKeyStatus: false,
+        geminiApiKeyStatus: false,
+        firebaseStatus: false,
+        firebaseQuotaExceeded: false,
+        footballApiStatus: false,
+        footballApiMessage: e.message || 'خطأ في الاتصال بالخادم',
+        serverConnection: false,
+        isLoading: false
+      });
+    }
+  };
+
   // Deletion Confirmation Modal States
   const [showMatchesModal, setShowMatchesModal] = useState(false);
   const [showNewsModal, setShowNewsModal] = useState(false);
@@ -85,6 +142,7 @@ export default function AdminPanel() {
   const [testPushBody, setTestPushBody] = useState('هذا إشعار دفع تجريبي للتحقق من تكامل خدمة FCM بنجاح في جهازك!');
   const [testPushLink, setTestPushLink] = useState('/');
   const [sendingTestPush, setSendingTestPush] = useState(false);
+  const [diagSubTab, setDiagSubTab] = useState<'summary' | 'variables'>('summary');
 
   // Form Initializers
   const initialMatch = {
@@ -134,6 +192,7 @@ export default function AdminPanel() {
   const [showLinkInputs, setShowLinkInputs] = useState(false);
 
   useEffect(() => {
+    loadServerDiagnostics();
     const qM = query(collection(db, 'matches'), orderBy('startTime', 'desc'));
     const qN = query(collection(db, 'news'), orderBy('createdAt', 'desc'));
     const qL = query(collection(db, 'leagues'), orderBy('name', 'asc'));
@@ -2168,249 +2227,412 @@ export default function AdminPanel() {
 
               {activeTab === 'API_DIAGNOSTICS' && (
                 <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }} className="space-y-6" key="api_diagnostics">
-                  <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                    {/* Synchronizer Control Card */}
-                    <div className="glass p-6 rounded-[2.5rem] border border-white/5 space-y-6 md:col-span-1 text-right" dir="rtl">
-                      <div className="flex items-center gap-3 border-b border-white/5 pb-4 justify-start">
-                        <div className="w-10 h-10 rounded-2xl bg-primary/10 text-primary flex items-center justify-center">
-                          <Activity size={20} className={syncStatus === 'syncing' ? 'animate-pulse text-red-500' : ''} />
-                        </div>
-                        <div>
-                          <h3 className="font-black text-white text-base">مزامنة المباريات المباشرة</h3>
-                          <p className="text-[10px] text-gray-400 font-bold">جلب وتحديث المباريات من خوادم المزود</p>
-                        </div>
-                      </div>
-
-                      <div className="space-y-4">
-                        <p className="text-xs text-gray-400 leading-relaxed font-bold">
-                          يقوم هذا الخيار باستدعاء خوادم API-football الحقيقية، واستخلاص مباريات اليوم الحالية ومطابقتها وحفظها في قاعدة بيانات Firestore لتبث للمشتركين فوراً.
-                        </p>
-
-                        <div className="bg-black/35 p-4 rounded-2xl border border-white/5 text-xs space-y-2 font-sans font-semibold">
-                          <div className="flex justify-between">
-                            <span className="text-gray-500">حالة المزامنة:</span>
-                            <span className={cn(
-                              "font-black",
-                              syncStatus === 'syncing' ? "text-yellow-400 animate-pulse" :
-                              syncStatus === 'success' ? "text-green-400" :
-                              syncStatus === 'error' ? "text-red-400" : "text-gray-400"
-                            )}>
-                              {syncStatus === 'idle' && 'جاهز للمطابقة'}
-                              {syncStatus === 'syncing' && 'مزامنة نشطة...'}
-                              {syncStatus === 'success' && 'تمت المزامنة بنجاح'}
-                              {syncStatus === 'error' && 'فشلت المزامنة'}
-                            </span>
-                          </div>
-                          {syncStatus === 'success' && (
-                            <div className="flex justify-between">
-                              <span className="text-gray-500">المباريات المستحدثة:</span>
-                              <span className="text-white font-black">{syncCount} مباراة</span>
-                            </div>
-                          )}
-                          {syncStatus === 'error' && syncError && (
-                            <div className="text-[10px] text-red-400 pt-1 leading-relaxed border-t border-white/5 font-mono text-left" style={{ direction: 'ltr' }}>
-                              {syncError}
-                            </div>
-                          )}
-                        </div>
-
-                        <button 
-                          onClick={async () => {
-                            setSyncStatus('syncing');
-                            setSyncError(null);
-                            setSyncCount(0);
-                            try {
-                              const data = await getLiveMatches().catch(() => null);
-                              let matchSourceList = data?.matches || [];
-                              
-                              if (matchSourceList.length === 0) {
-                                const todayData = await getTodayMatches().catch(() => null);
-                                if (todayData && todayData.matches) {
-                                  matchSourceList = todayData.matches;
-                                }
-                              }
-                              
-                              if (matchSourceList && matchSourceList.length > 0) {
-                                let count = 0;
-                                for (const rawMatch of matchSourceList) {
-                                  const matchId = `fd_${rawMatch.id}`;
-                                  const scoreHome = rawMatch.score?.fullTime?.home ?? 0;
-                                  const scoreAway = rawMatch.score?.fullTime?.away ?? 0;
-                                  
-                                  let finalStatus: 'LIVE' | 'UPCOMING' | 'FINISHED' = 'LIVE';
-                                  if (rawMatch.status === 'FINISHED') {
-                                    finalStatus = 'FINISHED';
-                                  } else if (['TIMED', 'SCHEDULED', 'POSTPONED'].includes(rawMatch.status || '')) {
-                                    finalStatus = 'UPCOMING';
-                                  }
-                                  
-                                  const dbPayload = {
-                                    homeTeam: rawMatch.homeTeam?.name || 'غير محدد',
-                                    awayTeam: rawMatch.awayTeam?.name || 'غير محدد',
-                                    homeLogo: rawMatch.homeTeam?.crest || '',
-                                    awayLogo: rawMatch.awayTeam?.crest || '',
-                                    homeScore: scoreHome,
-                                    awayScore: scoreAway,
-                                    status: finalStatus,
-                                    league: rawMatch.competition?.name || 'الدوري غير معروف',
-                                    leagueLogo: rawMatch.competition?.emblem || '',
-                                    startTime: rawMatch.utcDate || new Date().toISOString(),
-                                    updatedAt: new Date().toISOString(),
-                                    streamingLinks: []
-                                  };
-                                  
-                                  await setDoc(doc(db, 'matches', matchId), dbPayload, { merge: true });
-                                  count++;
-                                }
-                                setSyncCount(count);
-                                setSyncStatus('success');
-                                showToast(`عظيم! تم مزامنة تحديث (${count}) مباراة مضافة للتطبيق بنجاح.`, 'success');
-                              } else {
-                                setSyncStatus('error');
-                                setSyncError('لم يتم إرجاع أي مباريات في الوقت الحالي من مزود البيانات المجاني.');
-                                showToast('لم يتم العثور على مباريات اليوم بالـ API المباشر', 'warning');
-                              }
-                            } catch (err: any) {
-                              console.error(err);
-                              setSyncStatus('error');
-                              setSyncError(err.message || 'خطأ غير معروف في الربط بالـ API');
-                              showToast('حدث خطأ أثناء الاتصال بمطابق الـ API المباشر', 'warning');
-                            }
-                          }}
-                          disabled={syncStatus === 'syncing'}
-                          className="w-full bg-primary text-black font-black py-4 rounded-xl flex items-center justify-center gap-2 hover:scale-[1.02] transition-all disabled:opacity-50 cursor-pointer text-xs"
-                        >
-                          <RefreshCw size={14} className={syncStatus === 'syncing' ? 'animate-spin' : ''} />
-                          <span>{syncStatus === 'syncing' ? 'جاري الفحص المباشر...' : 'مزامنة المباريات الآن  🚀'}</span>
-                        </button>
-
-                        <button
-                          onClick={async () => {
-                            setDiagnosticsResult({ status: 'testing' });
-                            try {
-                              const res: any = await testFootballApi().catch((e) => { throw new Error(e.message || 'خطأ اتصال'); });
-                              if (res && res.success) {
-                                setDiagnosticsResult({
-                                  status: 'success',
-                                  endpoint: '/competitions',
-                                  message: `تم التحقق بنجاح! الاتصال السحابي بالـ API مشفر ونشط بشكل صحيح.`,
-                                  samples: res.competitions ? res.competitions.slice(0, 3) : []
-                                });
-                                showToast('نجح اختبار جودة الاتصال بمزود البيانات الحقيقي!', 'success');
-                              } else {
-                                throw new Error(res?.message || 'الرد غير سليم');
-                              }
-                            } catch (err: any) {
-                              setDiagnosticsResult({
-                                status: 'failed',
-                                endpoint: '/competitions',
-                                message: `فشل الاتصال: ${err.message || 'Error 401 Unauthorized'}`
-                              });
-                              showToast('فشل التحقق من صحة الاتصال بالـ API المباشر', 'warning');
-                            }
-                          }}
-                          disabled={diagnosticsResult.status === 'testing'}
-                          className="w-full bg-white/5 border border-white/10 hover:bg-white/10 text-white font-bold py-3 px-2.5 rounded-xl flex items-center justify-center gap-2 transition-all text-xs cursor-pointer"
-                        >
-                          <ShieldCheck size={14} className={diagnosticsResult.status === 'testing' ? 'animate-spin' : ''} />
-                          <span>اختبار الاتصال بمزود البيانات</span>
-                        </button>
-                      </div>
+                  
+                  {/* Sub-tab Navigation */}
+                  <div className="flex items-center justify-between border-b border-white/5 pb-4">
+                    <div className="flex gap-2">
+                      <button
+                        onClick={() => setDiagSubTab('summary')}
+                        className={cn(
+                          "px-4 py-2 rounded-xl text-xs font-black transition-all cursor-pointer",
+                          diagSubTab === 'summary' ? "bg-primary text-black" : "text-gray-400 hover:text-white hover:bg-white/5"
+                        )}
+                      >
+                        لوحة تشخيص الاتصال وتفاصيل البيئة (Server Status)
+                      </button>
+                      <button
+                        onClick={() => setDiagSubTab('variables')}
+                        className={cn(
+                          "px-4 py-2 rounded-xl text-xs font-black transition-all cursor-pointer",
+                          diagSubTab === 'variables' ? "bg-primary text-black" : "text-gray-400 hover:text-white hover:bg-white/5"
+                        )}
+                      >
+                        أعمدة البيئة المطلوبة (Environment Variables)
+                      </button>
+                      <button
+                        onClick={() => navigate('/admin/system-health')}
+                        className="px-4 py-2 rounded-xl text-xs font-black bg-purple-600/20 text-purple-300 border border-purple-500/20 hover:bg-purple-500/25 transition-all cursor-pointer flex items-center gap-1.5"
+                      >
+                        <ShieldCheck size={14} className="text-purple-400" />
+                        <span>تقارير صحة الأنظمة (System Health) 🚀</span>
+                      </button>
                     </div>
 
-                    {/* Diagnostics Details & Logs Console Card */}
-                    <div className="glass p-6 rounded-[2.5rem] border border-white/5 space-y-6 md:col-span-2 flex flex-col items-stretch">
-                      <div className="flex items-center justify-between border-b border-white/5 pb-4">
-                        <button
-                          onClick={() => {
-                            apiTracker.logs = [];
-                            setApiLogs([]);
-                            showToast('تم إفراغ مستودع سجلات المزامنة المؤقت بنجاح', 'success');
-                          }}
-                          className="text-red-400 hover:text-red-300 font-bold text-xs flex items-center gap-1 border border-red-500/10 hover:bg-red-500/5 px-2.5 py-1.5 rounded-lg transition-all"
-                        >
-                          <Trash2 size={12} />
-                          <span>تصفير السجلات</span>
-                        </button>
-
-                        <div className="flex items-center gap-3 text-right">
-                          <div>
-                            <h3 className="font-black text-white text-base">سجل الإجراءات المطور وخط سير الشبكة</h3>
-                            <p className="text-[10px] text-gray-400 font-bold">مراقبة حية للطلبات المنتهية واستكشاف الأخطاء</p>
-                          </div>
-                          <div className="w-10 h-10 rounded-2xl bg-indigo-500/10 text-indigo-400 flex items-center justify-center">
-                            <Terminal size={20} />
-                          </div>
-                        </div>
-                      </div>
-
-                      {/* Display test output or details if any */}
-                      {diagnosticsResult.status !== 'idle' && (
-                        <div className={cn(
-                          "p-4 rounded-2xl border text-xs space-y-2 text-right",
-                          diagnosticsResult.status === 'testing' ? "bg-yellow-500/5 border-yellow-500/20 text-yellow-300" :
-                          diagnosticsResult.status === 'success' ? "bg-green-500/5 border-green-500/20 text-green-300" :
-                          "bg-red-500/5 border-red-500/20 text-red-300"
-                        )}>
-                          <div className="flex gap-2 font-bold justify-between items-center" dir="rtl">
-                            <span className="font-black flex items-center gap-1.5">
-                              <span className="w-2 h-2 rounded-full bg-current" />
-                              <span>نتيجة اختبار مزود البيانات:</span>
-                            </span>
-                            <span className="font-mono bg-white/5 px-2 py-0.5 rounded text-[10px] uppercase text-gray-400">
-                              {diagnosticsResult.endpoint}
-                            </span>
-                          </div>
-                          <p className="font-semibold leading-relaxed">{diagnosticsResult.message}</p>
-                          {diagnosticsResult.samples && diagnosticsResult.samples.length > 0 && (
-                            <div className="pt-2 border-t border-white/5 text-[10px] text-gray-400 text-right">
-                              <span className="font-black block mb-1">عينات البيانات المقروءة:</span>
-                              <pre className="font-mono bg-black/40 p-2.5 rounded-lg max-h-[80px] overflow-y-auto text-left leading-normal" style={{ direction: 'ltr' }}>
-                                {JSON.stringify(diagnosticsResult.samples, null, 2)}
-                              </pre>
-                            </div>
-                          )}
-                        </div>
-                      )}
-
-                      {/* Terminal Tracker Logs */}
-                      <div className="flex-1 min-h-[220px] bg-slate-950/80 border border-white/5 rounded-2xl p-4 font-mono text-xs flex flex-col overflow-hidden relative" style={{ direction: 'ltr' }}>
-                        <div className="absolute top-3 right-4 flex gap-1.5 pointer-events-none">
-                          <span className="w-2.5 h-2.5 rounded-full bg-red-500/80" />
-                          <span className="w-2.5 h-2.5 rounded-full bg-yellow-500/80" />
-                          <span className="w-2.5 h-2.5 rounded-full bg-green-500/80" />
-                        </div>
-                        <span className="text-[10px] text-gray-500 font-bold mb-3 select-none">SYSTEM_NETWORK_TRACKER@CONSOLE:~$</span>
-                        
-                        <div className="flex-1 overflow-y-auto space-y-2 pr-1 font-mono text-[11px] leading-relaxed">
-                          {apiLogs.length === 0 ? (
-                            <p className="text-gray-650 italic select-none">لا توجد عمليات ربط تزامنية مؤخرة مسجلة في الوقت الراهن.</p>
-                          ) : (
-                            apiLogs.slice().reverse().map((log, index) => (
-                              <div key={index} className="space-y-1 pb-2 border-b border-white/5 text-left">
-                                <div className="flex items-center gap-2 justify-between">
-                                  <span className={cn(
-                                    "font-bold uppercase px-1.5 py-0.5 rounded text-[9px]",
-                                    log.status === 'success' ? "bg-green-500/15 text-green-400" : "bg-red-500/15 text-red-550"
-                                  )}>
-                                    {log.status === 'success' ? 'OK' : 'ERROR'}
-                                  </span>
-                                  <span className="text-blue-400 font-bold font-mono">{log.method} {log.endpoint}</span>
-                                  <span className="text-gray-500 text-[10px]">{new Date(log.timestamp).toLocaleTimeString()}</span>
-                                </div>
-                                {log.errors && (
-                                  <p className="text-red-400 pl-4 text-[10px] pr-2">Errors: {JSON.stringify(log.errors)}</p>
-                                )}
-                                {!log.errors && (
-                                  <p className="text-gray-400 pl-4 text-[10px] pr-2">Status: {log.statusText} • Size: {log.dataSize ? `${(log.dataSize / 1024).toFixed(1)} KB` : 'N/A'} {log.isCached ? '• (من الذاكرة المؤقتة)' : ''}</p>
-                                )}
-                              </div>
-                            ))
-                          )}
-                        </div>
-                      </div>
-                    </div>
+                    <button
+                      onClick={loadServerDiagnostics}
+                      className="text-xs text-primary font-bold hover:underline flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-primary/10 border border-primary/20 hover:bg-primary/25 transition-all select-none"
+                    >
+                      <RefreshCw size={12} className={serverDiagnostics.isLoading ? 'animate-spin' : ''} />
+                      <span>إعادة فحص الخادم</span>
+                    </button>
                   </div>
+
+                  {/* Missing Environment Credentials Warning Banner ( العربية الاحترافية المطلوبة ) */}
+                  {(!serverDiagnostics.viteApiKeyStatus || !serverDiagnostics.geminiApiKeyStatus) && (
+                    <motion.div 
+                      initial={{ opacity: 0, scale: 0.98 }} 
+                      animate={{ opacity: 1, scale: 1 }}
+                      className="p-6 rounded-[2rem] border border-amber-500/25 bg-amber-500/5 text-center space-y-3 relative overflow-hidden"
+                    >
+                      <div className="absolute top-0 right-0 w-32 h-32 bg-amber-500/5 rounded-full filter blur-2xl pointer-events-none" />
+                      <AlertCircle className="text-amber-400 mx-auto animate-pulse" size={40} />
+                      <h4 className="text-sm font-black text-white">التحذير العام لتكامل الخادم</h4>
+                      <p className="text-xs text-amber-300 font-bold leading-relaxed max-w-xl mx-auto">
+                        لم يتم إعداد مصدر البيانات بعد. يرجى إضافة مفاتيح البيئة من إعدادات Vercel.
+                      </p>
+                    </motion.div>
+                  )}
+
+                  {diagSubTab === 'summary' ? (
+                    <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                      
+                      {/* Left Side: Services Check Stack */}
+                      <div className="lg:col-span-1 space-y-6">
+                        
+                        <div className="glass p-6 rounded-[2.5rem] border border-white/5 space-y-5 text-right" dir="rtl">
+                          <div className="flex items-start gap-3 border-b border-white/5 pb-4 justify-start">
+                            <div className="w-10 h-10 rounded-2xl bg-primary/10 text-primary flex items-center justify-center shrink-0">
+                              <Activity size={20} className={serverDiagnostics.isLoading ? 'animate-pulse text-primary' : ''} />
+                            </div>
+                            <div>
+                              <h3 className="font-black text-white text-sm">حالة المكونات الخمسة المباشرة</h3>
+                              <p className="text-[10px] text-gray-500 font-bold">فحص فوري للاعتمادات النشطة حالياً</p>
+                            </div>
+                          </div>
+
+                          <div className="space-y-3 font-sans font-semibold text-xs">
+                            
+                            {/* VITE_API_KEY */}
+                            <div className="flex items-center justify-between py-2 border-b border-white/5">
+                              <span className="text-gray-400 text-[11px] font-mono">VITE_API_KEY:</span>
+                              <div className="flex items-center gap-1.5 font-bold">
+                                <span className={cn("w-2 h-2 rounded-full", serverDiagnostics.viteApiKeyStatus ? "bg-green-500" : "bg-red-500 animate-pulse")} />
+                                <span className={serverDiagnostics.viteApiKeyStatus ? "text-green-400" : "text-red-400"}>
+                                  {serverDiagnostics.viteApiKeyStatus ? "موجود ونشط" : "مفقود (Offline)"}
+                                </span>
+                              </div>
+                            </div>
+
+                            {/* GEMINI_API_KEY */}
+                            <div className="flex items-center justify-between py-2 border-b border-white/5">
+                              <span className="text-gray-400 text-[11px] font-mono">GEMINI_API_KEY:</span>
+                              <div className="flex items-center gap-1.5 font-bold">
+                                <span className={cn("w-2 h-2 rounded-full", serverDiagnostics.geminiApiKeyStatus ? "bg-green-500" : "bg-red-500 animate-pulse")} />
+                                <span className={serverDiagnostics.geminiApiKeyStatus ? "text-green-400" : "text-red-400"}>
+                                  {serverDiagnostics.geminiApiKeyStatus ? "موجود ونشط" : "مفقود (Offline)"}
+                                </span>
+                              </div>
+                            </div>
+
+                            {/* Firebase */}
+                            <div className="flex items-center justify-between py-2 border-b border-white/5">
+                              <span className="text-gray-400 text-[11px]">قاعدة Firestore:</span>
+                              <div className="flex items-center gap-1.5 font-bold">
+                                <span className={cn(
+                                  "w-2 h-2 rounded-full",
+                                  serverDiagnostics.firebaseQuotaExceeded ? "bg-yellow-500 animate-pulse" :
+                                  serverDiagnostics.firebaseStatus ? "bg-green-500" : "bg-red-500"
+                                )} />
+                                <span className={
+                                  serverDiagnostics.firebaseQuotaExceeded ? "text-yellow-400" :
+                                  serverDiagnostics.firebaseStatus ? "text-green-400" : "text-red-400"
+                                }>
+                                  {serverDiagnostics.firebaseQuotaExceeded ? "تجاوز الحصة (مستقر)" :
+                                   serverDiagnostics.firebaseStatus ? "سليمة ومتصلة" : "فصل الاتصال"}
+                                </span>
+                              </div>
+                            </div>
+
+                            {/* Football API Status */}
+                            <div className="flex items-center justify-between py-2 border-b border-white/5">
+                              <span className="text-gray-400 text-[11px]">مزود البيانات (API-Football):</span>
+                              <div className="flex items-center gap-1.5 font-bold">
+                                <span className={cn("w-2 h-2 rounded-full", serverDiagnostics.footballApiStatus ? "bg-green-500" : "bg-yellow-500 animate-pulse")} />
+                                <span className={serverDiagnostics.footballApiStatus ? "text-green-400" : "text-yellow-400"}>
+                                  {serverDiagnostics.footballApiStatus ? "نشط وسليم" : "تراجع محلي"}
+                                </span>
+                              </div>
+                            </div>
+
+                            {/* Server Status */}
+                            <div className="flex items-center justify-between py-2">
+                              <span className="text-gray-400 text-[11px]">حالة السيرفر (Render Node):</span>
+                              <div className="flex items-center gap-1.5 font-bold">
+                                <span className={cn("w-2 h-2 rounded-full", serverDiagnostics.serverConnection ? "bg-green-500 animate-pulse" : "bg-red-500")} />
+                                <span className={serverDiagnostics.serverConnection ? "text-green-400 animate-pulse" : "text-red-400"}>
+                                  {serverDiagnostics.serverConnection ? "متصل كلياً" : "توقف الاتصال"}
+                                </span>
+                              </div>
+                            </div>
+
+                          </div>
+                        </div>
+
+                        {/* Direct Match Scheduler Sync Action */}
+                        <div className="glass p-6 rounded-[2.5rem] border border-white/5 space-y-4 text-right" dir="rtl">
+                          <h4 className="font-black text-sm text-white">تحكم وقناة المزامنة اليدوية</h4>
+                          <p className="text-[11px] text-gray-400 leading-relaxed font-bold">
+                            تسمح لك هذه المنطقة بجلب وتدويل المباريات والنتائج فوراً من خدمة مطابق البيانات API-Football وتنقيتها في Firestore.
+                          </p>
+
+                          <button 
+                            onClick={async () => {
+                              setSyncStatus('syncing');
+                              setSyncError(null);
+                              setSyncCount(0);
+                              try {
+                                const data = await getLiveMatches().catch(() => null);
+                                let matchSourceList = data?.matches || [];
+                                
+                                if (matchSourceList.length === 0) {
+                                  const todayData = await getTodayMatches().catch(() => null);
+                                  if (todayData && todayData.matches) {
+                                    matchSourceList = todayData.matches;
+                                  }
+                                }
+                                
+                                if (matchSourceList && matchSourceList.length > 0) {
+                                  let count = 0;
+                                  for (const rawMatch of matchSourceList) {
+                                    const matchId = `fd_${rawMatch.id}`;
+                                    const scoreHome = rawMatch.score?.fullTime?.home ?? 0;
+                                    const scoreAway = rawMatch.score?.fullTime?.away ?? 0;
+                                    
+                                    let finalStatus: 'LIVE' | 'UPCOMING' | 'FINISHED' = 'LIVE';
+                                    if (rawMatch.status === 'FINISHED') {
+                                      finalStatus = 'FINISHED';
+                                    } else if (['TIMED', 'SCHEDULED', 'POSTPONED'].includes(rawMatch.status || '')) {
+                                      finalStatus = 'UPCOMING';
+                                    }
+                                    
+                                    const dbPayload = {
+                                      homeTeam: rawMatch.homeTeam?.name || 'غير محدد',
+                                      awayTeam: rawMatch.awayTeam?.name || 'غير محدد',
+                                      homeLogo: rawMatch.homeTeam?.crest || '',
+                                      awayLogo: rawMatch.awayTeam?.crest || '',
+                                      homeScore: scoreHome,
+                                      awayScore: scoreAway,
+                                      status: finalStatus,
+                                      league: rawMatch.competition?.name || 'الدوري غير معروف',
+                                      leagueLogo: rawMatch.competition?.emblem || '',
+                                      startTime: rawMatch.utcDate || new Date().toISOString(),
+                                      updatedAt: new Date().toISOString(),
+                                      streamingLinks: []
+                                    };
+                                    
+                                    await setDoc(doc(db, 'matches', matchId), dbPayload, { merge: true });
+                                    count++;
+                                  }
+                                  setSyncCount(count);
+                                  setSyncStatus('success');
+                                  showToast(`عظيم! تم مزامنة تحديث (${count}) مباراة مضافة للتطبيق بنجاح.`, 'success');
+                                } else {
+                                  setSyncStatus('error');
+                                  setSyncError('لم يتم إرجاع أي مباريات في الوقت الحالي من مزود البيانات المجاني.');
+                                  showToast('لم يتم العثور على مباريات اليوم بالـ API المباشر', 'warning');
+                                }
+                              } catch (err: any) {
+                                console.error(err);
+                                setSyncStatus('error');
+                                setSyncError(err.message || 'خطأ غير معروف في الربط بالـ API');
+                                showToast('حدث خطأ أثناء الاتصال بمطابق الـ API المباشر', 'warning');
+                              }
+                            }}
+                            disabled={syncStatus === 'syncing'}
+                            className="w-full bg-primary text-black font-black py-3.5 rounded-xl flex items-center justify-center gap-2 hover:scale-[1.02] transition-all disabled:opacity-50 cursor-pointer text-xs"
+                          >
+                            <RefreshCw size={13} className={syncStatus === 'syncing' ? 'animate-spin' : ''} />
+                            <span>{syncStatus === 'syncing' ? 'جاري الفحص المباشر...' : 'مزامنة المباريات الآن  🚀'}</span>
+                          </button>
+                        </div>
+
+                      </div>
+
+                      {/* Right Side: Network Tracker Console Logs */}
+                      <div className="lg:col-span-2 flex flex-col items-stretch space-y-6">
+                        
+                        <div className="glass p-6 rounded-[2.5rem] border border-white/5 space-y-4 flex flex-col flex-1">
+                          
+                          <div className="flex items-center justify-between border-b border-white/5 pb-4">
+                            <button
+                              onClick={() => {
+                                apiTracker.logs = [];
+                                setApiLogs([]);
+                                showToast('تم إفراغ مستودع سجلات المزامنة المؤقت بنجاح', 'success');
+                              }}
+                              className="text-red-400 hover:text-red-300 font-bold text-xs flex items-center gap-1 border border-red-500/10 hover:bg-red-500/5 px-2.5 py-1.5 rounded-lg transition-all select-none"
+                            >
+                              <Trash2 size={12} />
+                              <span>تصفير السجلات</span>
+                            </button>
+
+                            <div className="flex items-center gap-3 text-right">
+                              <div>
+                                <h3 className="font-black text-white text-sm">سجل الإجراءات المطور وخط سير الشبكة</h3>
+                                <p className="text-[10px] text-gray-400 font-bold">مراقبة حية للطلبات المنتهية واستكشاف الأخطاء</p>
+                              </div>
+                              <div className="w-10 h-10 rounded-2xl bg-indigo-500/10 text-indigo-400 flex items-center justify-center">
+                                <Terminal size={20} />
+                              </div>
+                            </div>
+                          </div>
+
+                          {/* Terminal Tracker Logs */}
+                          <div className="flex-1 min-h-[250px] bg-slate-950/80 border border-white/5 rounded-2xl p-4 font-mono text-xs flex flex-col overflow-hidden relative" style={{ direction: 'ltr' }}>
+                            <div className="absolute top-3 right-4 flex gap-1.5 pointer-events-none">
+                              <span className="w-2.5 h-2.5 rounded-full bg-red-500/80" />
+                              <span className="w-2.5 h-2.5 rounded-full bg-yellow-500/80" />
+                              <span className="w-2.5 h-2.5 rounded-full bg-green-500/80" />
+                            </div>
+                            <span className="text-[10px] text-gray-500 font-bold mb-3 select-none">SYSTEM_NETWORK_TRACKER@CONSOLE:~$</span>
+                            
+                            <div className="flex-1 overflow-y-auto space-y-2 pr-1 font-mono text-[11px] leading-relaxed">
+                              {apiLogs.length === 0 ? (
+                                <p className="text-gray-650 italic select-none">لا توجد عمليات ربط تزامنية مؤخرة مسجلة في الوقت الراهن.</p>
+                              ) : (
+                                apiLogs.slice().reverse().map((log, index) => (
+                                  <div key={index} className="space-y-1 pb-2 border-b border-white/5 text-left">
+                                    <div className="flex items-center gap-2 justify-between">
+                                      <span className={cn(
+                                        "font-bold uppercase px-1.5 py-0.5 rounded text-[9px]",
+                                        log.status === 'success' ? "bg-green-500/15 text-green-400" : "bg-red-500/15 text-red-550"
+                                      )}>
+                                        {log.status === 'success' ? 'OK' : 'ERROR'}
+                                      </span>
+                                      <span className="text-blue-400 font-bold font-mono">{log.method} {log.endpoint}</span>
+                                      <span className="text-gray-500 text-[10px]">{new Date(log.timestamp).toLocaleTimeString()}</span>
+                                    </div>
+                                    {log.errors && (
+                                      <p className="text-red-400 pl-4 text-[10px] pr-2">Errors: {JSON.stringify(log.errors)}</p>
+                                    )}
+                                    {!log.errors && (
+                                      <p className="text-gray-400 pl-4 text-[10px] pr-2">Status: {log.statusText} • Size: {log.dataSize ? `${(log.dataSize / 1024).toFixed(1)} KB` : 'N/A'} {log.isCached ? '• (من الذاكرة المؤقتة)' : ''}</p>
+                                    )}
+                                  </div>
+                                ))
+                              )}
+                            </div>
+                          </div>
+
+                        </div>
+                      </div>
+
+                    </div>
+                  ) : (
+                    
+                    /* Environment Variables Detailed Matrix */
+                    <div className="glass p-8 rounded-[2.5rem] border border-white/5 space-y-6 text-right" dir="rtl">
+                      <div>
+                        <h3 className="font-black text-white text-base">مطابقة وإقرار متغيرات البيئة (Environment Variables Master API)</h3>
+                        <p className="text-xs text-gray-400 mt-1">
+                          جدول مراقبة المتغيرات الرئيسية المطلوبة للخدمات الرياضية ومزامنة الذكاء الاصطناعي وتكاملها داخل خوادم Vercel.
+                        </p>
+                      </div>
+
+                      <div className="overflow-x-auto">
+                        <table className="w-full text-right text-xs" dir="rtl">
+                          <thead>
+                            <tr className="border-b border-white/5 text-gray-500 font-bold uppercase tracking-wider">
+                              <th className="pb-4 pt-2 font-black pr-2">اسم المتغير المطلوب</th>
+                              <th className="pb-4 pt-2 font-black">الغرض والوظيفة الرياضية</th>
+                              <th className="pb-4 pt-2 font-black text-center">هل هو موجود</th>
+                              <th className="pb-4 pt-2 font-black text-center">هل تم التحقق منه</th>
+                              <th className="pb-4 pt-2 font-black text-center">نوع مفتاح الاعتماد</th>
+                            </tr>
+                          </thead>
+                          <tbody className="divide-y divide-white/5">
+                            
+                            {/* VITE_API_KEY */}
+                            <tr className="hover:bg-white/[0.01] transition-all">
+                              <td className="py-4 pr-2 font-mono font-black text-emerald-400">VITE_API_KEY</td>
+                              <td className="py-4 font-bold text-gray-300">مزامنة أحداث وأهداف وتفاصيل لاعبي ومباريات API-Football حياً</td>
+                              <td className="py-4 text-center">
+                                <span className={cn(
+                                  "px-2.5 py-1 rounded-lg text-[10px] font-black inline-block",
+                                  serverDiagnostics.viteApiKeyStatus ? "bg-green-500/10 text-green-400" : "bg-red-500/10 text-red-400"
+                                )}>
+                                  {serverDiagnostics.viteApiKeyStatus ? "🟢 نعم (موجود)" : "🔴 لا (مفقود)"}
+                                </span>
+                              </td>
+                              <td className="py-4 text-center">
+                                <span className={cn(
+                                  "px-2.5 py-1 rounded-lg text-[10px] font-black inline-block",
+                                  serverDiagnostics.viteApiKeyStatus && serverDiagnostics.footballApiStatus ? "bg-green-500/10 text-green-400" : "bg-yellow-500/10 text-yellow-500"
+                                )}>
+                                  {serverDiagnostics.viteApiKeyStatus && serverDiagnostics.footballApiStatus ? "🟢 متعاقد وصالح" : "🟡 فحص تراجع مؤقت"}
+                                </span>
+                              </td>
+                              <td className="py-4 text-center text-[10px] font-bold text-gray-500 font-mono">RapidAPI / Api-Sports</td>
+                            </tr>
+
+                            {/* GEMINI_API_KEY */}
+                            <tr className="hover:bg-white/[0.01] transition-all">
+                              <td className="py-4 pr-2 font-mono font-black text-[#818cf8]">GEMINI_API_KEY</td>
+                              <td className="py-4 font-bold text-gray-300">توليد توقعات المباريات والتحليل التكتيكي الذكي وتلخيص الأخبار الكروية</td>
+                              <td className="py-4 text-center">
+                                <span className={cn(
+                                  "px-2.5 py-1 rounded-lg text-[10px] font-black inline-block",
+                                  serverDiagnostics.geminiApiKeyStatus ? "bg-green-500/10 text-green-400" : "bg-red-500/10 text-red-400"
+                                )}>
+                                  {serverDiagnostics.geminiApiKeyStatus ? "🟢 نعم (موجود)" : "🔴 لا (مفقود)"}
+                                </span>
+                              </td>
+                              <td className="py-4 text-center">
+                                <span className={cn(
+                                  "px-2.5 py-1 rounded-lg text-[10px] font-black inline-block",
+                                  serverDiagnostics.geminiApiKeyStatus ? "bg-green-500/10 text-green-400" : "bg-red-500/10 text-red-400"
+                                )}>
+                                  {serverDiagnostics.geminiApiKeyStatus ? "🟢 سليم ومعتمد" : "🔴 مفقود (مغلق)"}
+                                </span>
+                              </td>
+                              <td className="py-4 text-center text-[10px] font-bold text-gray-500 font-mono">Google Generative AI</td>
+                            </tr>
+
+                            {/* FIREBASE_SERVICE_ACCOUNT_KEY */}
+                            <tr className="hover:bg-white/[0.01] transition-all">
+                              <td className="py-4 pr-2 font-mono font-black text-amber-500">FIREBASE_SERVICE_ACCOUNT_KEY</td>
+                              <td className="py-4 font-bold text-gray-300">مفاتيح الدخول الإدارية الآمنة لقاعدة Firestore وبث Firebase Admin SDK</td>
+                              <td className="py-4 text-center">
+                                <span className="px-2.5 py-1 rounded-lg text-[10px] font-black inline-block bg-green-500/10 text-green-400">
+                                  🟢 مؤمن ومدمج
+                                </span>
+                              </td>
+                              <td className="py-4 text-center">
+                                <span className="px-2.5 py-1 rounded-lg text-[10px] font-black inline-block bg-green-500/10 text-green-400">
+                                  🟢 سليم ونشط
+                                </span>
+                              </td>
+                              <td className="py-4 text-center text-[10px] font-bold text-gray-500 font-mono">Firebase Credentials</td>
+                            </tr>
+
+                            {/* APP_URL */}
+                            <tr className="hover:bg-white/[0.01] transition-all">
+                              <td className="py-4 pr-2 font-mono font-black text-blue-400">APP_URL</td>
+                              <td className="py-4 font-bold text-gray-300">رابط البسترة ونطاق المعاينة لتنظيم عمليات فك التشفير وتوجيه الإرجاع الراجع</td>
+                              <td className="py-4 text-center">
+                                <span className="px-2.5 py-1 rounded-lg text-[10px] font-black inline-block bg-green-500/10 text-green-400">
+                                  🟢 نعم تلقائي
+                                </span>
+                              </td>
+                              <td className="py-4 text-center">
+                                <span className="px-2.5 py-1 rounded-lg text-[10px] font-black inline-block bg-green-500/10 text-green-400">
+                                  🟢 مستقر ومحدد
+                                </span>
+                              </td>
+                              <td className="py-4 text-center text-[10px] font-bold text-gray-500 font-mono">Deployment URL</td>
+                            </tr>
+
+                          </tbody>
+                        </table>
+                      </div>
+
+                      {/* Professional Help Note */}
+                      <div className="p-4 bg-white/5 border border-white/5 rounded-2xl text-[11px] text-gray-400 leading-relaxed font-bold">
+                        ℹ️ <strong className="text-white">لمشرفي النظام ومطوري الموقع:</strong> عند بدء نشر تطبيق البث المباشر (Korea 90) على خوادم Vercel أو معالج استضافة خارجي، يرجى تضمين هذه الأربعة متغيرات (Environment Variables) بكامل الدقة والحرص في خانة الإعدادات لضمان عدم حدوث أي انقطاع في تزويد الجمهور ببيانات المباريات حية وتوليد توقعات الذكاء الاصطناعي بشكل سليم.
+                      </div>
+                    </div>
+                  )}
+
                 </motion.div>
               )}
             </AnimatePresence>

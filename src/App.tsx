@@ -25,6 +25,7 @@ import ApiFootballTestPage from './pages/ApiFootballTestPage';
 import NewsAggregatorPage from './pages/NewsAggregatorPage';
 import BrandSystemPage from './pages/BrandSystemPage';
 import FootballDebugScreen from './pages/FootballDebugScreen';
+import SystemHealthPage from './pages/SystemHealthPage';
 
 import LeaguesPage from './pages/LeaguesPage';
 import LeaguePage from './pages/LeaguePage';
@@ -42,6 +43,41 @@ const queryClient = new QueryClient({
 
 export default function App() {
   useEffect(() => {
+    // Run automated startup diagnostics check
+    const runStartupDiagnostics = async () => {
+      console.log("%c⚽ [Korea90 V2 System Startup Check] Initializing audit...", "color: #10b981; font-weight: bold; font-size: 13px;");
+      
+      const viteApiKey = import.meta.env.VITE_API_KEY || '';
+      const localOverride = localStorage.getItem('korea90_user_api_key') || '';
+      
+      console.log(`[Startup Audit] VITE_API_KEY Configured: ${viteApiKey ? '✅ YES' : '❌ NO'}`);
+      if (localOverride) {
+        console.info(`[Startup Audit] UI Local Storage override detected: ✅ YES (Active)`);
+      }
+      
+      try {
+        const res = await fetch('/api/diagnostics');
+        if (res.ok) {
+          const report = await res.json();
+          console.log("%c[Startup Audit] Server diagnostics report:", "color: #3b82f6;", report);
+          if (!report.viteApiKeyStatus && !localOverride) {
+            console.error("[Startup Audit Error] CRITICAL: VITE_API_KEY is completely missing on server. App is running on offline backups.");
+          }
+          if (!report.geminiApiKeyStatus) {
+            console.warn("[Startup Audit Warning] GEMINI_API_KEY is not configured on the server. AI features may be disabled.");
+          }
+          if (!report.firebaseStatus) {
+            console.error("[Startup Audit Error] Firestore database is not responding correctly.");
+          }
+        } else {
+          console.error(`[Startup Audit Error] Server diagnostics endpoint responded with status ${res.status}`);
+        }
+      } catch (err: any) {
+        console.error("[Startup Audit Error] Failed to ping server diagnostics:", err.message || err);
+      }
+    };
+    runStartupDiagnostics();
+
     const initAdMob = async () => {
       if (Capacitor.isNativePlatform()) {
         try {
@@ -78,6 +114,7 @@ export default function App() {
                       <Route path="/schedule" element={<Schedule />} />
                       <Route path="/leagues" element={<LeaguesPage />} />
                       <Route path="/admin" element={<AdminPanel />} />
+                      <Route path="/admin/system-health" element={<SystemHealthPage />} />
                       <Route path="/profile" element={<Profile />} />
                       <Route path="/test-match" element={<MatchTestPage />} />
                       <Route path="/apifootball-test" element={<ApiFootballTestPage />} />

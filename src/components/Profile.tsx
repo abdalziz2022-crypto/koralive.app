@@ -6,6 +6,7 @@ import { Link } from 'react-router-dom';
 import { LogOut, Settings, Bell, Star, Shield, User as UserIcon, Check, Plus, Trophy, Users, Mail, Lock, AlertCircle, Radio, Download, Bookmark, BookOpen, Trash2, ChevronRight } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { doc, getDoc, setDoc, updateDoc } from 'firebase/firestore';
+import { updateProfile } from 'firebase/auth';
 import { UserProfile, League, News } from '../types';
 import { cn } from '../lib/utils';
 import { useError } from '../context/ErrorContext';
@@ -34,6 +35,7 @@ export default function Profile() {
   const [isSignUp, setIsSignUp] = useState(false);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [displayNameInput, setDisplayNameInput] = useState('');
   const [authError, setAuthError] = useState('');
   const [authLoading, setAuthLoading] = useState(false);
   const [notificationToken, setNotificationToken] = useState<string | null>(null);
@@ -135,7 +137,32 @@ export default function Profile() {
     setAuthLoading(true);
     try {
       if (isSignUp) {
-        await registerWithEmail(email, password);
+        if (!displayNameInput.trim()) {
+          setAuthError('الرجاء إدخال الاسم بالكامل أولاً.');
+          setAuthLoading(false);
+          return;
+        }
+        const userCredential = await registerWithEmail(email, password);
+        const registeredUser = userCredential.user;
+        
+        // Update user display name in Firebase Auth
+        await updateProfile(registeredUser, {
+          displayName: displayNameInput.trim()
+        });
+
+        // Create the Firestore user profile document direct
+        const docRef = doc(db, 'users', registeredUser.uid);
+        const newProfile: UserProfile = {
+          uid: registeredUser.uid,
+          displayName: displayNameInput.trim(),
+          email: registeredUser.email || '',
+          photoURL: registeredUser.photoURL || `https://api.dicebear.com/7.x/initials/svg?seed=${registeredUser.uid}`,
+          isAdmin: registeredUser.email === 'abdalziz2022@gmail.com',
+          favoriteLeagues: [],
+          favoriteTeams: [],
+        };
+        await setDoc(docRef, newProfile);
+        setProfile(newProfile);
       } else {
         await loginWithEmail(email, password);
       }
@@ -408,6 +435,23 @@ export default function Profile() {
                 </div>
 
                 <form onSubmit={handleEmailAuth} className="space-y-4">
+                  {isSignUp && (
+                    <div className="space-y-2">
+                      <label className="text-xs font-bold text-gray-400 block px-2 text-right">الاسم بالكامل</label>
+                      <div className="relative text-right">
+                        <UserIcon size={16} className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-500" />
+                        <input 
+                          type="text" 
+                          required
+                          placeholder="مثال: أحمد محمد"
+                          value={displayNameInput}
+                          onChange={(e) => setDisplayNameInput(e.target.value)}
+                          className="w-full bg-surface border border-border rounded-xl py-3 pl-12 pr-4 focus:neon-border outline-none text-sm transition-all text-right"
+                        />
+                      </div>
+                    </div>
+                  )}
+
                   <div className="space-y-2">
                     <label className="text-xs font-bold text-gray-400 block px-2">البريد الإلكتروني</label>
                     <div className="relative">

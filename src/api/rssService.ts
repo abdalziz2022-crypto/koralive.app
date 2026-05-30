@@ -641,13 +641,13 @@ export async function syncRssFeeds(firestoreInstance?: any) {
 
     try {
       const feed = await fetchAndParseRss(source.url, rssParser);
-      itemsToProcess = (feed.items || []).slice(0, 15); // Process top newest items to guarantee freshness
+      itemsToProcess = (feed.items || []).slice(0, 3); // Process top 3 newest items to reduce AI and Firestore quota overhead
     } catch (err: any) {
       console.warn(`[RSS Engine] Primary RSS feed failed for "${source.name}" (${source.url}): ${err.message}. Trying Google News RSS Search fallback...`);
       try {
         const fallbackUrl = `https://news.google.com/rss/search?q=${encodeURIComponent(source.name)}&hl=ar&gl=SA&ceid=SA:ar`;
         const feed = await fetchAndParseRss(fallbackUrl, rssParser);
-        itemsToProcess = (feed.items || []).slice(0, 15);
+        itemsToProcess = (feed.items || []).slice(0, 3);
         console.info(`[RSS Engine] Fallback succeeded. Loaded ${itemsToProcess.length} news items for "${source.name}" via Google News Search.`);
         
         // Self-heal: update source configurations to use the robust Google News URL
@@ -668,6 +668,9 @@ export async function syncRssFeeds(firestoreInstance?: any) {
     }
 
     let count = 0;
+    const batch = firestoreInstance ? firestoreInstance.batch() : null;
+    let batchCount = 0;
+    
     try {
       for (const item of itemsToProcess) {
         if (!item.title || !item.link) continue;
@@ -744,10 +747,12 @@ export async function syncRssFeeds(firestoreInstance?: any) {
           tags: [classifiedCategory]
         };
 
-        // Persist article locally or on Firestore database
-        if (firestoreInstance) {
+        // Persist article locally or stage onto Firestore database batch
+        if (firestoreInstance && batch) {
           try {
-            await firestoreInstance.collection('rss_news').doc(articleId).set(newArticle);
+            const docRef = firestoreInstance.collection('rss_news').doc(articleId);
+            batch.set(docRef, newArticle);
+            batchCount++;
             count++;
           } catch (e: any) {
             localArticles.unshift(newArticle);
@@ -757,6 +762,12 @@ export async function syncRssFeeds(firestoreInstance?: any) {
           localArticles.unshift(newArticle);
           count++;
         }
+      }
+
+      // Commit the batched write at once if there are staged news articles
+      if (firestoreInstance && batch && batchCount > 0) {
+        await batch.commit().catch(e => console.error('[RSS Engine] Staging commit failed:', e.message));
+        console.log(`[RSS Engine] Committed ${batchCount} articles to Firestore via single batch write.`);
       }
 
       totalScraped += count;

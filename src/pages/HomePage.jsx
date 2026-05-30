@@ -47,7 +47,7 @@ export default function HomePage() {
   const [user] = useAuthState(auth);
   
   // Real-time API query feeds (Sprint 4 data-first foundation)
-  const { data: qLiveMatches, isLoading: liveLoading, isError: liveError } = useLiveMatches();
+  const { data: qLiveMatches, isLoading: liveLoading, isError: liveError, error: liveQueryError } = useLiveMatches();
   const { data: qFixtures, isLoading: fixturesLoading } = useFixtures({
     date: new Date().toISOString().split('T')[0]
   });
@@ -159,25 +159,38 @@ export default function HomePage() {
           <motion.div 
             initial={{ opacity: 0, y: -10 }} 
             animate={{ opacity: 1, y: 0 }}
-            className="rounded-2xl border border-red-500/15 bg-red-950/15 p-5 flex flex-col sm:flex-row items-center justify-between gap-4"
+            className={`rounded-2xl border p-5 flex flex-col sm:flex-row items-center justify-between gap-4 ${
+              liveError 
+                ? 'border-red-500/15 bg-red-950/15' 
+                : 'border-amber-500/15 bg-amber-950/10'
+            }`}
           >
             <div className="flex items-start gap-3 text-right">
-              <ShieldAlert className="text-red-400 shrink-0 mt-0.5" size={20} />
+              {liveError ? (
+                <ShieldAlert className="text-red-400 shrink-0 mt-0.5" size={20} />
+              ) : (
+                <AlertTriangle className="text-amber-400 shrink-0 mt-0.5" size={20} />
+              )}
               <div>
-                <h4 className="text-xs font-black text-red-200">
-                  {liveError ? 'فشل جلب البيانات الحقيقية من الموفر المباشر' : 'تنبيه: لا يوجد مفتاح ربط API-Football حقيقي نشط'}
-                </h4>
-                <p className="text-[11px] text-red-300/80 mt-1 leading-relaxed">
+                <h4 className={`text-xs font-black ${liveError ? 'text-red-200' : 'text-amber-200'}`}>
                   {liveError 
-                    ? 'تعذر الوصول للمزود بسبب نفاذ الحصة أو حد الـ Rate Limit لطلب البيانات الحية.' 
-                    : 'التطبيق مهيأ في وضع الأمان لمنع أي محتوى افتراضي أو مباريات مصطنعة.'}
-                  {' يرجى إدخال مفتاح API-Football الخاص بك لتأكيد الاتصال والمطابقة.'}
+                    ? `فشل جلب البيانات الحقيقية من الموفر المباشر: ${liveQueryError?.message || ''}` 
+                    : 'لم يتم إعداد مصدر البيانات بعد. يرجى إضافة مفاتيح البيئة من إعدادات Vercel.'}
+                </h4>
+                <p className={`text-[11px] mt-1 leading-relaxed ${liveError ? 'text-red-300/80' : 'text-amber-300/85'}`}>
+                  {liveError 
+                    ? 'تعذر الاتصال بالمزود المباشر بسبب نفاد الحصة المجانية للمفتاح، أو حد الـ Rate Limit لطلبات البث.' 
+                    : 'التطبيق مهيأ في وضع الأمان الرياضي. لتفعيل مزامنة المباريات الحية والنتائج والأخبار الحقيقية كاملة، يرجى تعيين مفتاح البيئة لـ Vercel.'}
                 </p>
               </div>
             </div>
             <button
               onClick={() => navigate('/football-debug')}
-              className="bg-red-500/15 hover:bg-red-500/25 text-red-300 border border-red-500/30 font-black text-xs px-4.5 py-2 rounded-xl transition-all cursor-pointer whitespace-nowrap"
+              className={`font-black text-xs px-4.5 py-2 rounded-xl transition-all cursor-pointer whitespace-nowrap border ${
+                liveError
+                  ? 'bg-red-500/15 hover:bg-red-500/25 text-red-300 border-red-500/30'
+                  : 'bg-amber-500/15 hover:bg-amber-500/25 text-amber-300 border-amber-500/30'
+              }`}
             >
               شاشة التدقيق والمفاتيح
             </button>
