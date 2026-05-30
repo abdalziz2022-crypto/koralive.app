@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { Capacitor } from '@capacitor/core';
-import { auth, db, signInWithGoogle, signInWithFacebook, handleFirestoreError, OperationType, handleRedirectResult, loginWithEmail, registerWithEmail, registerForPushNotifications } from '../firebase';
+import { auth, db, signInWithGoogle, signInWithFacebook, handleFirestoreError, OperationType, handleRedirectResult, loginWithEmail, registerWithEmail, registerForPushNotifications, resetPasswordWithEmail } from '../firebase';
 import { useAuthState } from 'react-firebase-hooks/auth';
 import { Link } from 'react-router-dom';
 import { LogOut, Settings, Bell, Star, Shield, User as UserIcon, Check, Plus, Trophy, Users, Mail, Lock, AlertCircle, Radio, Download, Bookmark, BookOpen, Trash2, ChevronRight } from 'lucide-react';
@@ -37,6 +37,10 @@ export default function Profile() {
   const [authError, setAuthError] = useState('');
   const [authLoading, setAuthLoading] = useState(false);
   const [notificationToken, setNotificationToken] = useState<string | null>(null);
+  const [showForgotPassword, setShowForgotPassword] = useState(false);
+  const [resetEmail, setResetEmail] = useState('');
+  const [resetMessage, setResetMessage] = useState('');
+  const [resetLoading, setResetLoading] = useState(false);
 
   useEffect(() => {
     if (profile?.savedArticles && profile.savedArticles.length > 0) {
@@ -147,6 +151,53 @@ export default function Profile() {
     }
   };
 
+  const handleGoogleSignIn = async () => {
+    setAuthError('');
+    setAuthLoading(true);
+    try {
+      await signInWithGoogle();
+    } catch (error: any) {
+      console.error("Popup/Sign-in error intercepted in UI:", error);
+      if (error.message === "IFRAME_BLOCKED") {
+        setAuthError("عذراً! لا يمكن فتح نافذة تسجيل الدخول بجوجل داخل شاشة المعاينة. يرجى فتح التطبيق في علامة تبويب جديدة (Open in new tab) من الزر بأعلى اليمين.");
+      } else if (error.message === "CAPACITOR_BLOCKED") {
+        setAuthError("تسجيل الدخول السريع عبر جوجل غير متاح حالياً. يرجى البدء بإنشاء حساب بالبريد الإلكتروني.");
+      } else if (error.code === 'auth/popup-blocked' || error.code === 'auth/cancelled-popup-request' || error.code === 'auth/popup-closed-by-user') {
+        setAuthError("أوه! لقد قام متصفح الهاتف بحظر النافذة المنبثقة للتسجيل بجوجل. لتصفح آمن وسهل، نوصيك بتسجيل الدخول الفوري عن طريق (البريد الإلكتروني ✉️) بالأسفل، فهو الخيار المضمون بنسبة 100% ولا يحتاج لنوافذ منبثقة.");
+      } else {
+        setAuthError("تعذر تسجيل الدخول السريع بجوجل بسبب قيود الخصوصية بالمتصفح. يرجى الدخول المباشر باستخدام البريد الإلكتروني لتخطي المشكلة.");
+      }
+    } finally {
+      setAuthLoading(false);
+    }
+  };
+
+  const handlePasswordReset = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setAuthError('');
+    setResetMessage('');
+    if (!resetEmail) {
+      setAuthError('الرجاء كتابة البريد الإلكتروني أولاً لإرسال رابط الاستعادة.');
+      return;
+    }
+    setResetLoading(true);
+    try {
+      await resetPasswordWithEmail(resetEmail);
+      setResetMessage('تم إرسال رابط فريد لإعادة تعيين كلمة المرور بنجاح! يرجى التحقق من صندوق الوارد أو مجلد الرسائل غير المرغوب فيها (Spam).');
+    } catch (err: any) {
+      console.error("Password reset error:", err);
+      if (err.code === 'auth/user-not-found') {
+        setAuthError('عذراً، هذا البريد الإلكتروني غير مسجل لدينا.');
+      } else if (err.code === 'auth/invalid-email') {
+        setAuthError('البريد الإلكتروني الذي أدخلته غير صحيح.');
+      } else {
+        setAuthError('حدث خطأ أثناء محاولة إرسال الرابط. تأكد من اتصالك بالإنترنت وحاول مجدداً.');
+      }
+    } finally {
+      setResetLoading(false);
+    }
+  };
+
   const toggleFavorite = async (type: 'favoriteLeagues' | 'favoriteTeams', value: string) => {
     if (!profile || !user) return;
 
@@ -195,13 +246,23 @@ export default function Profile() {
                   <>
                     <div className="grid grid-cols-1 gap-3">
                       <button 
-                        onClick={signInWithGoogle}
-                        className="w-full flex items-center justify-center gap-3 bg-white text-black font-black px-6 py-4 rounded-2xl hover:neon-glow transition-all active:scale-95 text-sm"
+                        onClick={handleGoogleSignIn}
+                        disabled={authLoading}
+                        className="w-full flex items-center justify-center gap-3 bg-white text-black font-black px-6 py-4 rounded-2xl hover:neon-glow transition-all active:scale-95 text-sm disabled:opacity-50"
                       >
                         <img src="https://www.gstatic.com/firebasejs/ui/2.0.0/images/auth/google.svg" className="w-5 h-5" alt="" />
-                        تسجيل الدخول السريع
+                        {authLoading ? 'جاري التحميل...' : 'تسجيل الدخول السريع'}
                       </button>
                     </div>
+
+                    {authError && (
+                      <div className="p-4 bg-red-500/10 border border-red-500/20 rounded-2xl text-red-500 text-xs font-semibold leading-relaxed">
+                        <div className="flex items-start gap-2">
+                          <AlertCircle size={16} className="shrink-0 mt-0.5" />
+                          <div>{authError}</div>
+                        </div>
+                      </div>
+                    )}
 
                     <div className="relative">
                       <div className="absolute inset-0 flex items-center"><div className="w-full border-t border-white/5"></div></div>
@@ -212,7 +273,10 @@ export default function Profile() {
 
                 <div className="space-y-3">
                   <button 
-                    onClick={() => setShowEmailAuth(true)}
+                    onClick={() => {
+                      setShowEmailAuth(true);
+                      setAuthError('');
+                    }}
                     className="w-full flex items-center justify-center gap-3 glass text-white font-black px-6 py-4 rounded-2xl hover:bg-white/5 transition-all text-sm"
                   >
                     <Mail size={18} />
@@ -254,12 +318,73 @@ export default function Profile() {
                    </div>
                 </div>
               </>
+            ) : showForgotPassword ? (
+              <div className="space-y-6">
+                <div className="text-center space-y-2">
+                  <h2 className="text-lg font-black text-primary">إعادة تعيين كلمة المرور</h2>
+                  <p className="text-gray-400 text-xs font-medium">أدخل بريدك الإلكتروني وسنرسل لك رابطاً لاستعادة حسابك فوراً.</p>
+                </div>
+
+                <form onSubmit={handlePasswordReset} className="space-y-4">
+                  <div className="space-y-2">
+                    <label className="text-xs font-bold text-gray-400 block px-2">البريد الإلكتروني</label>
+                    <div className="relative">
+                      <Mail size={16} className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-500" />
+                      <input 
+                        type="email" 
+                        required
+                        placeholder="example@mail.com"
+                        value={resetEmail}
+                        onChange={(e) => setResetEmail(e.target.value)}
+                        className="w-full bg-surface border border-border rounded-xl py-3 pl-12 pr-4 focus:neon-border outline-none text-sm transition-all"
+                      />
+                    </div>
+                  </div>
+
+                  {authError && (
+                    <div className="p-3 bg-red-500/10 border border-red-500/20 rounded-xl flex items-center gap-2 text-red-500 text-xs font-bold animate-shake">
+                      <AlertCircle size={14} className="shrink-0" />
+                      {authError}
+                    </div>
+                  )}
+
+                  {resetMessage && (
+                    <div className="p-4 bg-green-500/10 border border-green-500/20 rounded-xl flex items-start gap-2 text-green-400 text-xs font-bold leading-relaxed">
+                      <Check size={16} className="shrink-0 mt-0.5 text-green-500" />
+                      <div>{resetMessage}</div>
+                    </div>
+                  )}
+
+                  <button 
+                    disabled={resetLoading}
+                    type="submit"
+                    className="w-full bg-primary text-black font-black px-6 py-4 rounded-2xl hover:neon-glow transition-all disabled:opacity-50"
+                  >
+                    {resetLoading ? 'جاري الإرسال...' : 'إرسال رابط الاستعادة'}
+                  </button>
+
+                  <button 
+                    type="button"
+                    onClick={() => {
+                      setShowForgotPassword(false);
+                      setAuthError('');
+                      setResetMessage('');
+                    }}
+                    className="text-xs text-gray-500 font-bold hover:text-white transition-colors text-center w-full block pt-2"
+                  >
+                    ← العودة لصفحة تسجيل الدخول
+                  </button>
+                </form>
+              </div>
             ) : (
               <div className="space-y-6">
                 <div className="flex bg-surface p-1 rounded-2xl border border-white/5">
                   <button
                     type="button"
-                    onClick={() => setIsSignUp(false)}
+                    onClick={() => {
+                      setIsSignUp(false);
+                      setAuthError('');
+                    }}
                     className={cn(
                       "flex-1 py-2 text-sm font-black rounded-xl transition-all",
                       !isSignUp ? "bg-primary text-black shadow-lg" : "text-gray-500 hover:text-white"
@@ -269,7 +394,10 @@ export default function Profile() {
                   </button>
                   <button
                     type="button"
-                    onClick={() => setIsSignUp(true)}
+                    onClick={() => {
+                      setIsSignUp(true);
+                      setAuthError('');
+                    }}
                     className={cn(
                       "flex-1 py-2 text-sm font-black rounded-xl transition-all",
                       isSignUp ? "bg-primary text-black shadow-lg" : "text-gray-500 hover:text-white"
@@ -296,7 +424,22 @@ export default function Profile() {
                   </div>
 
                   <div className="space-y-2">
-                    <label className="text-xs font-bold text-gray-400 block px-2">كلمة المرور</label>
+                    <div className="flex justify-between items-center px-2">
+                      <label className="text-xs font-bold text-gray-400">كلمة المرور</label>
+                      {!isSignUp && (
+                        <button 
+                          type="button"
+                          onClick={() => {
+                            setShowForgotPassword(true);
+                            setResetEmail(email);
+                            setAuthError('');
+                          }}
+                          className="text-primary text-[11px] font-black hover:underline"
+                        >
+                          نسيت كلمة المرور؟
+                        </button>
+                      )}
+                    </div>
                     <div className="relative">
                       <Lock size={16} className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-500" />
                       <input 
@@ -312,7 +455,7 @@ export default function Profile() {
 
                   {authError && (
                     <div className="p-3 bg-red-500/10 border border-red-500/20 rounded-xl flex items-center gap-2 text-red-500 text-xs font-bold animate-shake">
-                      <AlertCircle size={14} />
+                      <AlertCircle size={14} className="shrink-0" />
                       {authError}
                     </div>
                   )}

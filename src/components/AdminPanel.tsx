@@ -7,15 +7,21 @@ import {
   Plus, Trash2, Send, ShieldAlert, LayoutGrid, Newspaper, ListFilter, X, 
   Megaphone, Trophy, Edit3, Radio, Info, Settings, ExternalLink, 
   Search, CheckCircle2, AlertCircle, Clock, Activity, BarChart2,
-  ChevronRight, ArrowLeft, RefreshCw, Layers, Database
+  ChevronRight, ArrowLeft, RefreshCw, Layers, Database,
+  Users, Terminal, Sliders, Palette, ShieldCheck, Heart, Sparkles
 } from 'lucide-react';
 import ManagementList from './ManagementList';
 import DataEngine from './DataEngine';
 import StatsManager from './StatsManager';
+import ThemeSettings from './ThemeSettings';
 import { motion, AnimatePresence } from 'motion/react';
 import { useSettings } from '../context/SettingsContext';
 import { useError } from '../context/ErrorContext';
+import { useTheme } from '../context/ThemeContext';
 import { extractIframeSrc, stripUndefined, cn } from '../lib/utils';
+import { apiTracker, ApiLog } from '../api/apiClient';
+import { getLiveMatches, getTodayMatches, testFootballApi } from '../api/footballApi';
+import { mapFootballDataResponse } from '../services/matchMapper';
 
 type Tab = 
   | 'DASHBOARD' 
@@ -24,7 +30,8 @@ type Tab =
   | 'LEAGUES_LIST' | 'LEAGUE_FORM'
   | 'ANNOUNCEMENTS_LIST' | 'ANNOUNCEMENT_FORM'
   | 'DATA_ENGINE' | 'STATS_MANAGER' | 'SETTINGS' | 'DATA_CLEANUP'
-  | 'ADS_LIST' | 'AD_FORM';
+  | 'ADS_LIST' | 'AD_FORM'
+  | 'USERS_LIST' | 'API_DIAGNOSTICS';
 
 export default function AdminPanel() {
   const [user] = useAuthState(auth);
@@ -42,12 +49,42 @@ export default function AdminPanel() {
   const [dbAnnouncements, setDbAnnouncements] = useState<Announcement[]>([]);
   const [dbAds, setDbAds] = useState<Ad[]>([]);
   const [dbSources, setDbSources] = useState<any[]>([]);
+  const [dbUsers, setDbUsers] = useState<any[]>([]);
+  
+  // API Diagnostics States
+  const [apiLogs, setApiLogs] = useState<ApiLog[]>([]);
+  const { theme, updateTheme } = useTheme();
+  const [diagnosticsResult, setDiagnosticsResult] = useState<{
+    status: 'idle' | 'testing' | 'success' | 'failed';
+    endpoint?: string;
+    message?: string;
+    samples?: any;
+  }>({ status: 'idle' });
+  const [syncStatus, setSyncStatus] = useState<'idle' | 'syncing' | 'success' | 'error'>('idle');
+  const [syncCount, setSyncCount] = useState<number>(0);
+  const [syncError, setSyncError] = useState<string | null>(null);
 
   // Deletion Confirmation Modal States
   const [showMatchesModal, setShowMatchesModal] = useState(false);
   const [showNewsModal, setShowNewsModal] = useState(false);
   const [showAllModal, setShowAllModal] = useState(false);
   const [deleteInProgress, setDeleteInProgress] = useState(false);
+
+  // Reusable Overlay Confirmation Modal State
+  const [confirmModalData, setConfirmModalData] = useState<{
+    isOpen: boolean;
+    title: string;
+    description: string;
+    onConfirm: () => Promise<void> | void;
+    confirmTextRequired?: string;
+  } | null>(null);
+  const [typedConfirmText, setTypedConfirmText] = useState('');
+
+  // FCM Test Push Notification State
+  const [testPushTitle, setTestPushTitle] = useState('إشعار تجريبي من كورة لايف ⚽');
+  const [testPushBody, setTestPushBody] = useState('هذا إشعار دفع تجريبي للتحقق من تكامل خدمة FCM بنجاح في جهازك!');
+  const [testPushLink, setTestPushLink] = useState('/');
+  const [sendingTestPush, setSendingTestPush] = useState(false);
 
   // Form Initializers
   const initialMatch = {
@@ -103,6 +140,7 @@ export default function AdminPanel() {
     const qA = query(collection(db, 'announcements'), orderBy('createdAt', 'desc'));
     const qAds = query(collection(db, 'ads'), orderBy('createdAt', 'desc'));
     const qSources = query(collection(db, 'sources'));
+    const qUsers = query(collection(db, 'users'));
     
     const unsubMatches = onSnapshot(qM, (s) => {
       setDbMatches(s.docs.map(d => ({ id: d.id, ...d.data() } as Match)));
@@ -127,8 +165,26 @@ export default function AdminPanel() {
     const unsubSources = onSnapshot(qSources, (s) => {
       setDbSources(s.docs.map(d => ({ id: d.id, ...d.data() })));
     }, (error) => handleFirestoreError(error, OperationType.LIST, 'sources'));
+
+    const unsubUsers = onSnapshot(qUsers, (s) => {
+      setDbUsers(s.docs.map(d => ({ id: d.id, ...d.data() })));
+    }, (error) => console.log("Silent error fetching users snapshots:", error));
+
+    setApiLogs([...apiTracker.logs]);
+    const unsubApiLogs = apiTracker.subscribe(() => {
+      setApiLogs([...apiTracker.logs]);
+    });
     
-    return () => { unsubMatches(); unsubNews(); unsubLeagues(); unsubAnnouncements(); unsubAds(); unsubSources(); };
+    return () => { 
+      unsubMatches(); 
+      unsubNews(); 
+      unsubLeagues(); 
+      unsubAnnouncements(); 
+      unsubAds(); 
+      unsubSources(); 
+      unsubUsers();
+      unsubApiLogs();
+    };
   }, []);
 
   const [checkingLinks, setCheckingLinks] = useState(false);
@@ -176,6 +232,8 @@ export default function AdminPanel() {
       }
       showToast('تم حذف كافة المباريات بنجاح!', 'success');
       setShowMatchesModal(false);
+      setConfirmModalData(null);
+      setTypedConfirmText('');
     } catch (e: any) {
       showToast('حدث خطأ أثناء حذف المباريات: ' + e.message, 'warning');
     } finally {
@@ -197,6 +255,8 @@ export default function AdminPanel() {
       }
       showToast('تم حذف كافة الأخبار بنجاح!', 'success');
       setShowNewsModal(false);
+      setConfirmModalData(null);
+      setTypedConfirmText('');
     } catch (e: any) {
       showToast('حدث خطأ أثناء حذف الأخبار: ' + e.message, 'warning');
     } finally {
@@ -228,10 +288,28 @@ export default function AdminPanel() {
       await Promise.all([...matchDeletions, ...newsDeletions]);
       showToast('تم تصفية وحذف كافة المباريات والأخبار بنجاح!', 'success');
       setShowAllModal(false);
+      setConfirmModalData(null);
+      setTypedConfirmText('');
     } catch (e: any) {
       showToast('حدث خطأ أثناء التنظيف الشامل: ' + e.message, 'warning');
     } finally {
       setDeleteInProgress(false);
+    }
+  };
+
+  const handleSendTestPush = async () => {
+    if (!testPushTitle.trim() || !testPushBody.trim()) {
+      showToast('الرجاء كتابة العنوان ونص التنبيه أولاً', 'warning');
+      return;
+    }
+    setSendingTestPush(true);
+    try {
+      await triggerPushNotification(testPushTitle.trim(), testPushBody.trim(), testPushLink.trim() || '/');
+      showToast('تم إرسال بث التنبيه التجريبي بنجاح إلى جميع الأجهزة المشتركة!', 'success');
+    } catch (e: any) {
+      showToast('فشل إرسال التنبيه التجريبي: ' + e.message, 'warning');
+    } finally {
+      setSendingTestPush(false);
     }
   };
 
@@ -581,8 +659,9 @@ export default function AdminPanel() {
     totalNews: dbNews.length,
     activeAnnouncements: dbAnnouncements.filter(a => a.active).length,
     totalAds: dbAds.length,
-    activeAds: dbAds.filter(a => a.active).length
-  }), [dbMatches, dbNews, dbAnnouncements, dbAds]);
+    activeAds: dbAds.filter(a => a.active).length,
+    totalUsers: dbUsers.length
+  }), [dbMatches, dbNews, dbAnnouncements, dbAds, dbUsers]);
 
   const filteredMatches = dbMatches.filter(m => 
     m.homeTeam.toLowerCase().includes(searchQuery.toLowerCase()) || 
@@ -625,6 +704,8 @@ export default function AdminPanel() {
                   { id: 'NEWS', label: 'الأخبار', icon: Newspaper, sub: 'NEWS_LIST' },
                   { id: 'ANNOUNCEMENTS', label: 'التنبيهات', icon: Megaphone, sub: 'ANNOUNCEMENTS_LIST' },
                   { id: 'CONFIG', label: 'البطولات', icon: Trophy, sub: 'LEAGUES_LIST' },
+                  { id: 'USERS_LIST', label: 'قائمة المستخدمين والمشتركين', icon: Users },
+                  { id: 'API_DIAGNOSTICS', label: 'مستكشف ومطابقة API المباشر', icon: Terminal },
                   { id: 'ADS', label: 'إدارة الإعلانات', icon: ExternalLink, sub: 'ADS_LIST' },
                   { id: 'DATA_ENGINE', label: 'محرك البيانات', icon: Radio },
                   { id: 'STATS_MANAGER', label: 'الإحصائيات والترتيب', icon: BarChart2 },
@@ -672,12 +753,13 @@ export default function AdminPanel() {
           {/* Main Content Area */}
           <main className="lg:col-span-9 space-y-8">
             
-             {/* Header / Stats Summary */}
-             <div className="grid grid-cols-2 lg:grid-cols-6 gap-4">
+              {/* Header / Stats Summary */}
+              <div className="grid grid-cols-2 lg:grid-cols-7 gap-4">
                 {[
                   { label: 'إجمالي المباريات', value: stats.totalMatches, icon: Trophy, color: 'text-primary' },
                   { label: 'بث مباشر الآن', value: stats.liveMatches, icon: Activity, color: 'text-red-500' },
                   { label: 'الأخبار المنشورة', value: stats.totalNews, icon: Newspaper, color: 'text-secondary' },
+                  { label: 'الأعضاء والجمهور', value: stats.totalUsers, icon: Users, color: 'text-indigo-400' },
                   { label: 'تنبيهات نشطة', value: stats.activeAnnouncements, icon: Megaphone, color: 'text-yellow-500' },
                   { label: 'الإعلانات النشطة', value: `${stats.activeAds}/${stats.totalAds}`, icon: ExternalLink, color: 'text-blue-500' },
                   { label: 'إجمالي الجلب الآلي', value: dbSources.reduce((acc, src) => acc + (src.itemsFetched || 0), 0), icon: Database, color: 'text-green-500' }
@@ -1473,6 +1555,14 @@ export default function AdminPanel() {
                        </div>
                        <button onClick={handleSaveSettings} className="w-full bg-primary text-black font-black py-5 rounded-[2rem]">حفظ الإعدادات</button>
                     </div>
+                    <div className="pt-8 text-right" dir="rtl">
+                       <h3 className="text-xl font-black text-primary mb-4 flex items-center gap-3">
+                          <Palette size={24} /> التخصيص والألوان والهوية الرياضية الكونية
+                       </h3>
+                       <ThemeSettings />
+                    </div>
+                    <div className="hidden">
+                    </div>
 
                     {/* منطقة الخطر - Danger Zone Link */}
                     <div className="pt-8">
@@ -1496,8 +1586,128 @@ export default function AdminPanel() {
               )}
 
               {activeTab === 'DATA_CLEANUP' && (
-                <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="space-y-6" key="data_cleanup_tab">
+                <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="space-y-8" key="data_cleanup_tab">
+                  {/* قسم 1: FCM Tester */}
                   <div className="pt-2">
+                    <h2 className="text-2xl font-black italic mb-6 text-primary flex items-center gap-3">
+                       <Megaphone className="text-primary animate-pulse" /> لوحة فحص واختبار التنبيهات (FCM Tester)
+                    </h2>
+                    
+                    <div className="glass p-8 rounded-[2.5rem] border border-primary/20 space-y-6">
+                      <div>
+                        <h3 className="text-lg font-bold text-white mb-2">أداة فحص إرسال الإشعارات والتحقق من الربط مع Firebase</h3>
+                        <p className="text-sm text-gray-400 leading-relaxed">
+                          استخدم هذه الواجهة لإرسال تنبيه دفع فوري تجريبي لجميع متصفحي التطبيق والأجهزة المسجلة. تتيح لك الأداة فحص وتأكّد سلامة وربط تدرّج الإشعارات وحالة الاتصال الخاص بـ Cloud Messaging بشكل حي.
+                        </p>
+                      </div>
+
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-6 pt-2">
+                        {/* مدخلات الإشعار */}
+                        <div className="space-y-4">
+                          <div className="space-y-2">
+                            <label className="text-[10px] font-black uppercase text-gray-400 px-1 block">عنوان الإشعار التجريبي</label>
+                            <input 
+                              type="text"
+                              placeholder="اكتب عنوان الإشعار هنا..."
+                              className="w-full bg-slate-950/40 border border-white/10 p-4 rounded-2xl font-bold focus:neon-border outline-none transition-all text-right"
+                              value={testPushTitle}
+                              onChange={e => setTestPushTitle(e.target.value)}
+                            />
+                          </div>
+                          
+                          <div className="space-y-2">
+                            <label className="text-[10px] font-black uppercase text-gray-400 px-1 block">نص الرسالة / تفاصيل التنبيه</label>
+                            <textarea 
+                              placeholder="اكتب نص الإشعار هنا بشكل جذاب..."
+                              rows={3}
+                              className="w-full bg-slate-950/40 border border-white/10 p-4 rounded-2xl font-bold focus:neon-border outline-none transition-all text-right min-h-[90px]"
+                              value={testPushBody}
+                              onChange={e => setTestPushBody(e.target.value)}
+                            />
+                          </div>
+
+                          <div className="space-y-2">
+                            <label className="text-[10px] font-black uppercase text-gray-400 px-1 block">رابط التوجيه عند النقر (Deep Link Url)</label>
+                            <input 
+                              type="text"
+                              placeholder="مثال: /#live أو /news"
+                              className="w-full bg-slate-950/40 border border-white/10 p-4 rounded-2xl font-mono text-xs focus:neon-border outline-none transition-all text-left"
+                              style={{ direction: 'ltr' }}
+                              value={testPushLink}
+                              onChange={e => setTestPushLink(e.target.value)}
+                            />
+                          </div>
+                        </div>
+
+                        {/* بريسيتات جاهزة ومؤشرات الفحص */}
+                        <div className="glass p-6 rounded-[2rem] border border-white/5 space-y-4 flex flex-col justify-between">
+                          <div className="space-y-3">
+                            <h4 className="text-sm font-bold text-white flex items-center gap-1.5 border-b border-white/5 pb-2">
+                              <Radio size={16} className="text-primary animate-pulse" /> قوالب تنبيهات جاهزة وسريعة الاختيار:
+                            </h4>
+                            <p className="text-[11px] text-gray-400 leading-snug">بإمكانك تجريب قوالب منسقة مسبقاً لنماذج مختلفة من الإشعارات الرياضية الأكثر استخداماً:</p>
+                            
+                            <div className="flex flex-col gap-2 pt-1">
+                              <button 
+                                onClick={() => {
+                                  setTestPushTitle('تحديث مباراة مباشر ⚽');
+                                  setTestPushBody('جووووول! هدف جديد يهز الشباك الآن. تابع الإثارة والتحليل المباشر ثانية بثانية معنا!');
+                                  setTestPushLink('/#live');
+                                  showToast('تم تطبيق قالب "الهدف المباشر"', 'info');
+                                }}
+                                className="w-full text-right text-xs bg-white/5 hover:bg-white/10 p-3 rounded-xl border border-white/5 font-bold text-gray-200 transition-all flex items-center justify-between"
+                              >
+                                <span>⚽ قالب: إعلان هدف لمباراة جارية</span>
+                                <span className="text-[10px] text-primary">تطبيق</span>
+                              </button>
+
+                              <button 
+                                onClick={() => {
+                                  setTestPushTitle('خبر عاجل ومؤكد 🚨');
+                                  setTestPushBody('مفاجأة مدوية في الميركاتو الصيفي! صفقة كبرى تقترب من الإعلان الرسمي ونكشف لكم التفاصيل الحصرية.');
+                                  setTestPushLink('/news');
+                                  showToast('تم تطبيق قالب "سوق الانتقالات"', 'info');
+                                }}
+                                className="w-full text-right text-xs bg-white/5 hover:bg-white/10 p-3 rounded-xl border border-white/5 font-bold text-gray-200 transition-all flex items-center justify-between"
+                              >
+                                <span>📰 قالب: خبر عاجل في الساحة الرياضية</span>
+                                <span className="text-[10px] text-blue-400">تطبيق</span>
+                              </button>
+
+                              <button 
+                                onClick={() => {
+                                  setTestPushTitle('انطلاق قمة الليلة 🏆');
+                                  setTestPushBody('صافرة البداية ترتفع الآن لأهم مواجهات هذا المساء! انضم لعشاق كرة القدم وتابع بدون تقطيع وبأعلى جودة.');
+                                  setTestPushLink('/');
+                                  showToast('تم تطبيق قالب "البث المباشر"', 'info');
+                                }}
+                                className="w-full text-right text-xs bg-white/5 hover:bg-white/10 p-3 rounded-xl border border-white/5 font-bold text-gray-200 transition-all flex items-center justify-between"
+                              >
+                                <span>🔥 قالب: التنبيه ببدء مباراة هامة</span>
+                                <span className="text-[10px] text-green-400">تطبيق</span>
+                              </button>
+                            </div>
+                          </div>
+
+                          <button 
+                            disabled={sendingTestPush}
+                            onClick={handleSendTestPush}
+                            className="bg-primary text-black font-black w-full py-4.5 rounded-2xl flex items-center justify-center gap-2 hover:scale-[1.01] transition-all duration-300 disabled:opacity-50 hover:shadow-xl hover:shadow-primary/15"
+                          >
+                            {sendingTestPush ? (
+                              <RefreshCw size={18} className="animate-spin" />
+                            ) : (
+                              <Send size={18} />
+                            )}
+                            <span>بث تنبيه تجريبي فوري لجميع الهواتف والأجهزة</span>
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* قسم 2: تنظيف البيانات */}
+                  <div>
                     <h2 className="text-2xl font-black italic mb-6 text-red-500 flex items-center gap-3">
                        <Trash2 className="text-red-500 animate-pulse" /> تنظيف وإعادة تنظيم بيانات التطبيق
                     </h2>
@@ -1524,38 +1734,21 @@ export default function AdminPanel() {
                           </div>
                           
                           <div className="mt-4 pt-4 border-t border-white/5">
-                            {showMatchesModal ? (
-                              <div className="bg-red-500/10 p-4 rounded-xl border border-red-500/30 space-y-3">
-                                <p className="text-xs text-red-400 font-black">هل أنت متأكد تماماً من حذف جميع المباريات؟ هذا الإجراء فوري ولا يمكن التراجع عنه.</p>
-                                <div className="flex gap-2 justify-end">
-                                  <button
-                                    disabled={deleteInProgress}
-                                    onClick={() => setShowMatchesModal(false)}
-                                    className="bg-white/10 hover:bg-white/20 text-white text-[11px] px-3.5 py-2 rounded-lg font-bold transition-all"
-                                  >
-                                    تراجع
-                                  </button>
-                                  <button
-                                    disabled={deleteInProgress}
-                                    onClick={handleDeleteAllMatches}
-                                    className="bg-red-500 hover:bg-red-600 text-white text-[11px] px-3.5 py-2 rounded-lg font-black transition-all flex items-center gap-1.5"
-                                  >
-                                    {deleteInProgress && <RefreshCw size={12} className="animate-spin" />}
-                                    نعم، احذف الكل
-                                  </button>
-                                </div>
-                              </div>
-                            ) : (
-                              <div className="flex items-center justify-between">
-                                <span className="text-xs font-black text-gray-500">العدد الحالي: {dbMatches.length}</span>
-                                <button
-                                  onClick={() => setShowMatchesModal(true)}
-                                  className="bg-red-500/15 text-red-500 hover:bg-red-500 hover:text-white font-black text-xs px-6 py-3 rounded-xl transition-all"
-                                >
-                                  تفريغ المباريات
-                                </button>
-                              </div>
-                            )}
+                            <div className="flex items-center justify-between">
+                              <span className="text-xs font-black text-gray-500">العدد الحالي: {dbMatches.length}</span>
+                              <button
+                                onClick={() => setConfirmModalData({
+                                  isOpen: true,
+                                  title: 'تأكيد إفراغ جميع المباريات',
+                                  description: `تحذير: سيتم حذف جميع المباريات المسجلة مسبقاً في قاعدة البيانات بشكل فوري وتطهير الجداول كلياً (العدد الحالي للبيانات: ${dbMatches.length}). هذا الإجراء لا يمكن التراجع عنه.`,
+                                  onConfirm: handleDeleteAllMatches,
+                                  confirmTextRequired: 'حذف المباريات'
+                                })}
+                                className="bg-red-500/15 text-red-500 hover:bg-red-500 hover:text-white font-black text-xs px-6 py-3 rounded-xl transition-all"
+                              >
+                                تفريغ المباريات
+                              </button>
+                            </div>
                           </div>
                         </div>
 
@@ -1572,83 +1765,47 @@ export default function AdminPanel() {
                           </div>
 
                           <div className="mt-4 pt-4 border-t border-white/5">
-                            {showNewsModal ? (
-                              <div className="bg-red-500/10 p-4 rounded-xl border border-red-500/30 space-y-3">
-                                <p className="text-xs text-red-400 font-black">هل أنت متأكد تماماً من حذف جميع المقالات الإخبارية؟ هذا الإجراء غير قابل للتراجع.</p>
-                                <div className="flex gap-2 justify-end">
-                                  <button
-                                    disabled={deleteInProgress}
-                                    onClick={() => setShowNewsModal(false)}
-                                    className="bg-white/10 hover:bg-white/20 text-white text-[11px] px-3.5 py-2 rounded-lg font-bold transition-all"
-                                  >
-                                    تراجع
-                                  </button>
-                                  <button
-                                    disabled={deleteInProgress}
-                                    onClick={handleDeleteAllNews}
-                                    className="bg-red-500 hover:bg-red-600 text-white text-[11px] px-3.5 py-2 rounded-lg font-black transition-all flex items-center gap-1.5"
-                                  >
-                                    {deleteInProgress && <RefreshCw size={12} className="animate-spin" />}
-                                    نعم، احذف الأخبار
-                                  </button>
-                                </div>
-                              </div>
-                            ) : (
-                              <div className="flex items-center justify-between">
-                                <span className="text-xs font-black text-gray-500">العدد الحالي: {dbNews.length}</span>
-                                <button
-                                  onClick={() => setShowNewsModal(true)}
-                                  className="bg-red-500/15 text-red-500 hover:bg-red-500 hover:text-white font-black text-xs px-6 py-3 rounded-xl transition-all"
-                                >
-                                  تفريغ الأخبار
-                                </button>
-                              </div>
-                            )}
+                            <div className="flex items-center justify-between">
+                              <span className="text-xs font-black text-gray-500">العدد الحالي: {dbNews.length}</span>
+                              <button
+                                onClick={() => setConfirmModalData({
+                                  isOpen: true,
+                                  title: 'تأكيد إفراغ جميع المقالات الإخبارية',
+                                  description: `تحذير: سيتم إزالة جميع المقالات والأخبار المنشورة في التطبيق لإعادة تنظيمه بشكل كامل (العدد الحالي للبيانات: ${dbNews.length}). هذا الإجراء نهائي ومستديم.`,
+                                  onConfirm: handleDeleteAllNews,
+                                  confirmTextRequired: 'حذف الأخبار'
+                                })}
+                                className="bg-red-500/15 text-red-500 hover:bg-red-500 hover:text-white font-black text-xs px-6 py-3 rounded-xl transition-all"
+                              >
+                                تفريغ الأخبار
+                              </button>
+                            </div>
                           </div>
                         </div>
                       </div>
 
                       {/* زر الحذف الكامل */}
                       <div className="p-6 rounded-2xl bg-red-500/5 border border-red-500/15">
-                        {showAllModal ? (
-                          <div className="bg-red-600/10 p-5 rounded-xl border border-red-600/30 space-y-4">
-                            <p className="text-sm font-black text-red-500 flex items-center gap-2">
-                              <AlertCircle size={18} /> هل أنت متأكد بنسبة 100% أنك تريد تصفية كافة المباريات والأخبار معاً؟
-                            </p>
-                            <div className="flex gap-3 justify-end">
-                              <button
-                                disabled={deleteInProgress}
-                                onClick={() => setShowAllModal(false)}
-                                className="bg-white/10 hover:bg-white/20 text-white text-xs px-5 py-2.5 rounded-lg font-bold transition-all"
-                              >
-                                إلغاء الأمر
-                              </button>
-                              <button
-                                disabled={deleteInProgress}
-                                onClick={handleDeleteAllData}
-                                className="bg-red-600 hover:bg-red-700 text-white text-xs px-5 py-2.5 rounded-lg font-black transition-all flex items-center gap-2"
-                              >
-                                {deleteInProgress && <RefreshCw size={12} className="animate-spin" />}
-                                تأكيد الحذف والمطلق للكل ({dbMatches.length + dbNews.length})
-                              </button>
-                            </div>
+                        <div className="flex flex-col md:flex-row items-center justify-between gap-4">
+                          <div className="space-y-1 text-right">
+                            <h4 className="font-bold text-white flex items-center gap-2">
+                              <AlertCircle size={16} className="text-red-500" /> الحذف الشامل والمطلق للبيانات
+                            </h4>
+                            <p className="text-xs text-gray-400">سيقوم هذا الزر بمسح جميع المباريات والأخبار دفعة واحدة لبدء المزامنة فوراً من الصفر.</p>
                           </div>
-                        ) : (
-                          <div className="flex flex-col md:flex-row items-center justify-between gap-4">
-                            <div className="space-y-1">
-                              <h4 className="font-bold text-white flex items-center gap-2">
-                                <AlertCircle size={16} className="text-red-500" /> الحذف الشامل والمطلق للبيانات
-                              </h4>
-                              <p className="text-xs text-gray-400">سيقوم هذا الزر بمسح جميع المباريات والأخبار دفعة واحدة لبدء المزامنة فوراً من الصفر.</p>
-                            </div>
-                            <button
-                              onClick={() => setShowAllModal(true)}
-                              className="w-full md:w-auto bg-red-600 hover:bg-red-700 text-white font-black text-sm px-8 py-4 rounded-xl transition-all"
-                            >
-                              تنظيف وحذف الكل ({dbMatches.length + dbNews.length})
-                            </button>
-                          </div>
-                        )}
+                          <button
+                            onClick={() => setConfirmModalData({
+                              isOpen: true,
+                              title: 'تأكيد الحذف الشامل والتنظيف المطلق لكافة البيانات',
+                              description: `تحذير خطير للغاية: سيقوم هذا الإجراء بإفراغ ومسح جميع المباريات والأخبار دفعة واحدة لبدء المزامنة فوراً من الصفر وسحب محتوى محدث (العدد الإجمالي للمقالات والمباريات: ${dbMatches.length + dbNews.length} وثيقة).`,
+                              onConfirm: handleDeleteAllData,
+                              confirmTextRequired: 'حذف كافة البيانات'
+                            })}
+                            className="w-full md:w-auto bg-red-600 hover:bg-red-700 text-white font-black text-sm px-8 py-4 rounded-xl transition-all"
+                          >
+                            تنظيف وحذف الكل ({dbMatches.length + dbNews.length})
+                          </button>
+                        </div>
                       </div>
 
                     </div>
@@ -1885,10 +2042,455 @@ export default function AdminPanel() {
                   <StatsManager />
                 </motion.div>
               )}
+
+              {activeTab === 'USERS_LIST' && (
+                <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }} className="space-y-6" key="users_list">
+                  <div className="glass p-6 rounded-[2.5rem] border border-white/5 space-y-6">
+                    <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 pb-6 border-b border-white/5">
+                      <div className="text-right">
+                        <h2 className="text-xl font-black text-white flex items-center gap-2 justify-end">
+                          <Users size={22} className="text-primary" />
+                          <span>قائمة المستخدمين والمشتركين ({dbUsers.length})</span>
+                        </h2>
+                        <p className="text-xs text-gray-400 mt-1">التحكم في حسابات المشتركين ومراقبة تفضيلاتهم لتوفير محتوى مخصص ومستهدف.</p>
+                      </div>
+                      
+                      {/* Local user search */}
+                      <div className="relative w-full md:w-80">
+                        <Search className="absolute right-4 top-1/2 -translate-y-1/2 text-gray-400" size={16} />
+                        <input
+                          type="text"
+                          placeholder="ابحث بالاسم أو البريد الإلكتروني..."
+                          value={searchQuery}
+                          onChange={(e) => setSearchQuery(e.target.value)}
+                          className="w-full bg-white/5 border border-white/10 pr-11 pl-4 py-3 rounded-xl text-xs font-bold text-white placeholder-gray-500 outline-none focus:neon-border transition-all text-right animate-none"
+                        />
+                      </div>
+                    </div>
+
+                    {/* Users list table or grid */}
+                    <div className="overflow-x-auto">
+                      <table className="w-full text-right text-xs" dir="rtl">
+                        <thead>
+                          <tr className="border-b border-white/5 text-gray-500 font-bold uppercase tracking-wider">
+                            <th className="pb-4 pt-2 font-black pr-2">المشترك</th>
+                            <th className="pb-4 pt-2 font-black">البريد الإلكتروني</th>
+                            <th className="pb-4 pt-2 font-black text-center">الفرق المفضلة</th>
+                            <th className="pb-4 pt-2 font-black text-center">الدوريات المفضلة</th>
+                            <th className="pb-4 pt-2 font-black text-center">حالة الإشعارات</th>
+                            <th className="pb-4 pt-2 font-black text-left pl-2">الإجراءات</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-white/5">
+                          {dbUsers.filter(usr => 
+                            (usr.displayName || usr.name || '').toLowerCase().includes(searchQuery.toLowerCase()) || 
+                            (usr.email || '').toLowerCase().includes(searchQuery.toLowerCase())
+                          ).map((usr) => {
+                            const favTeams = usr.favoriteTeams || [];
+                            const favLeagues = usr.favoriteLeagues || [];
+                            const hasFcm = !!usr.notificationToken;
+
+                            return (
+                              <tr key={usr.id} className="hover:bg-white/[0.01] transition-all">
+                                <td className="py-4 pr-2 font-black text-white">
+                                  <div className="flex items-center gap-3 justify-start">
+                                    <div className="w-9 h-9 rounded-2xl bg-primary/10 flex items-center justify-center text-primary font-bold font-mono border border-primary/10">
+                                      {(usr.displayName || usr.name || 'U')[0].toUpperCase()}
+                                    </div>
+                                    <div>
+                                      <p className="font-black text-sm">{usr.displayName || usr.name || 'مستخدم بدون اسم'}</p>
+                                      <p className="text-[10px] text-gray-500 font-mono">ID: {usr.id.slice(0, 8)}...</p>
+                                    </div>
+                                  </div>
+                                </td>
+                                <td className="py-4 font-mono font-bold text-gray-400">{usr.email || 'لا يوجد بريد'}</td>
+                                <td className="py-4 text-center font-bold text-gray-300">
+                                  {favTeams.length > 0 ? (
+                                    <span className="bg-primary/10 text-primary px-2.5 py-1 rounded-lg text-[10px] font-black inline-block">
+                                      {favTeams.length} فرق مفضلة
+                                    </span>
+                                  ) : (
+                                    <span className="text-gray-600 font-medium">لم يحدد</span>
+                                  )}
+                                </td>
+                                <td className="py-4 text-center font-bold text-gray-300">
+                                  {favLeagues.length > 0 ? (
+                                    <span className="bg-secondary/15 text-secondary px-2.5 py-1 rounded-lg text-[10px] font-black inline-block">
+                                      {favLeagues.length} دوريات
+                                    </span>
+                                  ) : (
+                                    <span className="text-gray-600 font-medium">لم يحدد</span>
+                                  )}
+                                </td>
+                                <td className="py-4 text-center">
+                                  <div className="flex items-center gap-1.5 font-bold justify-center">
+                                    <span className={`w-2 h-2 rounded-full ${hasFcm ? 'bg-green-500 animate-pulse' : 'bg-gray-600'}`} />
+                                    <span className={hasFcm ? 'text-green-400' : 'text-gray-500'}>
+                                      {hasFcm ? 'نشط (FCM)' : 'غير مسجل'}
+                                    </span>
+                                  </div>
+                                </td>
+                                <td className="py-4 text-left pl-2">
+                                  <div className="flex items-center justify-end gap-2" dir="ltr">
+                                    <button 
+                                      onClick={() => {
+                                        setConfirmModalData({
+                                          isOpen: true,
+                                          title: 'حذف حساب المستخدم',
+                                          description: `هل أنت متأكد من حذف الحساب والمستند الخاص بـ (${usr.displayName || usr.name || usr.email}) من قاعدة البيانات نهائياً؟`,
+                                          confirmTextRequired: usr.email || 'نعم',
+                                          onConfirm: async () => {
+                                            try {
+                                              await deleteDoc(doc(db, 'users', usr.id));
+                                              showToast('تم حذف ملف المستخدم بنجاح!', 'success');
+                                            } catch (err) {
+                                              showError(err);
+                                            }
+                                          }
+                                        });
+                                      }}
+                                      className="p-2.5 rounded-xl bg-red-500/10 hover:bg-red-500/20 text-red-550 transition-all cursor-pointer"
+                                      title="حذف الحساب"
+                                    >
+                                      <Trash2 size={14} />
+                                    </button>
+                                  </div>
+                                </td>
+                              </tr>
+                            );
+                          })}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                </motion.div>
+              )}
+
+              {activeTab === 'API_DIAGNOSTICS' && (
+                <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }} className="space-y-6" key="api_diagnostics">
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                    {/* Synchronizer Control Card */}
+                    <div className="glass p-6 rounded-[2.5rem] border border-white/5 space-y-6 md:col-span-1 text-right" dir="rtl">
+                      <div className="flex items-center gap-3 border-b border-white/5 pb-4 justify-start">
+                        <div className="w-10 h-10 rounded-2xl bg-primary/10 text-primary flex items-center justify-center">
+                          <Activity size={20} className={syncStatus === 'syncing' ? 'animate-pulse text-red-500' : ''} />
+                        </div>
+                        <div>
+                          <h3 className="font-black text-white text-base">مزامنة المباريات المباشرة</h3>
+                          <p className="text-[10px] text-gray-400 font-bold">جلب وتحديث المباريات من خوادم المزود</p>
+                        </div>
+                      </div>
+
+                      <div className="space-y-4">
+                        <p className="text-xs text-gray-400 leading-relaxed font-bold">
+                          يقوم هذا الخيار باستدعاء خوادم API-football الحقيقية، واستخلاص مباريات اليوم الحالية ومطابقتها وحفظها في قاعدة بيانات Firestore لتبث للمشتركين فوراً.
+                        </p>
+
+                        <div className="bg-black/35 p-4 rounded-2xl border border-white/5 text-xs space-y-2 font-sans font-semibold">
+                          <div className="flex justify-between">
+                            <span className="text-gray-500">حالة المزامنة:</span>
+                            <span className={cn(
+                              "font-black",
+                              syncStatus === 'syncing' ? "text-yellow-400 animate-pulse" :
+                              syncStatus === 'success' ? "text-green-400" :
+                              syncStatus === 'error' ? "text-red-400" : "text-gray-400"
+                            )}>
+                              {syncStatus === 'idle' && 'جاهز للمطابقة'}
+                              {syncStatus === 'syncing' && 'مزامنة نشطة...'}
+                              {syncStatus === 'success' && 'تمت المزامنة بنجاح'}
+                              {syncStatus === 'error' && 'فشلت المزامنة'}
+                            </span>
+                          </div>
+                          {syncStatus === 'success' && (
+                            <div className="flex justify-between">
+                              <span className="text-gray-500">المباريات المستحدثة:</span>
+                              <span className="text-white font-black">{syncCount} مباراة</span>
+                            </div>
+                          )}
+                          {syncStatus === 'error' && syncError && (
+                            <div className="text-[10px] text-red-400 pt-1 leading-relaxed border-t border-white/5 font-mono text-left" style={{ direction: 'ltr' }}>
+                              {syncError}
+                            </div>
+                          )}
+                        </div>
+
+                        <button 
+                          onClick={async () => {
+                            setSyncStatus('syncing');
+                            setSyncError(null);
+                            setSyncCount(0);
+                            try {
+                              const data = await getLiveMatches().catch(() => null);
+                              let matchSourceList = data?.matches || [];
+                              
+                              if (matchSourceList.length === 0) {
+                                const todayData = await getTodayMatches().catch(() => null);
+                                if (todayData && todayData.matches) {
+                                  matchSourceList = todayData.matches;
+                                }
+                              }
+                              
+                              if (matchSourceList && matchSourceList.length > 0) {
+                                let count = 0;
+                                for (const rawMatch of matchSourceList) {
+                                  const matchId = `fd_${rawMatch.id}`;
+                                  const scoreHome = rawMatch.score?.fullTime?.home ?? 0;
+                                  const scoreAway = rawMatch.score?.fullTime?.away ?? 0;
+                                  
+                                  let finalStatus: 'LIVE' | 'UPCOMING' | 'FINISHED' = 'LIVE';
+                                  if (rawMatch.status === 'FINISHED') {
+                                    finalStatus = 'FINISHED';
+                                  } else if (['TIMED', 'SCHEDULED', 'POSTPONED'].includes(rawMatch.status || '')) {
+                                    finalStatus = 'UPCOMING';
+                                  }
+                                  
+                                  const dbPayload = {
+                                    homeTeam: rawMatch.homeTeam?.name || 'غير محدد',
+                                    awayTeam: rawMatch.awayTeam?.name || 'غير محدد',
+                                    homeLogo: rawMatch.homeTeam?.crest || '',
+                                    awayLogo: rawMatch.awayTeam?.crest || '',
+                                    homeScore: scoreHome,
+                                    awayScore: scoreAway,
+                                    status: finalStatus,
+                                    league: rawMatch.competition?.name || 'الدوري غير معروف',
+                                    leagueLogo: rawMatch.competition?.emblem || '',
+                                    startTime: rawMatch.utcDate || new Date().toISOString(),
+                                    updatedAt: new Date().toISOString(),
+                                    streamingLinks: []
+                                  };
+                                  
+                                  await setDoc(doc(db, 'matches', matchId), dbPayload, { merge: true });
+                                  count++;
+                                }
+                                setSyncCount(count);
+                                setSyncStatus('success');
+                                showToast(`عظيم! تم مزامنة تحديث (${count}) مباراة مضافة للتطبيق بنجاح.`, 'success');
+                              } else {
+                                setSyncStatus('error');
+                                setSyncError('لم يتم إرجاع أي مباريات في الوقت الحالي من مزود البيانات المجاني.');
+                                showToast('لم يتم العثور على مباريات اليوم بالـ API المباشر', 'warning');
+                              }
+                            } catch (err: any) {
+                              console.error(err);
+                              setSyncStatus('error');
+                              setSyncError(err.message || 'خطأ غير معروف في الربط بالـ API');
+                              showToast('حدث خطأ أثناء الاتصال بمطابق الـ API المباشر', 'warning');
+                            }
+                          }}
+                          disabled={syncStatus === 'syncing'}
+                          className="w-full bg-primary text-black font-black py-4 rounded-xl flex items-center justify-center gap-2 hover:scale-[1.02] transition-all disabled:opacity-50 cursor-pointer text-xs"
+                        >
+                          <RefreshCw size={14} className={syncStatus === 'syncing' ? 'animate-spin' : ''} />
+                          <span>{syncStatus === 'syncing' ? 'جاري الفحص المباشر...' : 'مزامنة المباريات الآن  🚀'}</span>
+                        </button>
+
+                        <button
+                          onClick={async () => {
+                            setDiagnosticsResult({ status: 'testing' });
+                            try {
+                              const res: any = await testFootballApi().catch((e) => { throw new Error(e.message || 'خطأ اتصال'); });
+                              if (res && res.success) {
+                                setDiagnosticsResult({
+                                  status: 'success',
+                                  endpoint: '/competitions',
+                                  message: `تم التحقق بنجاح! الاتصال السحابي بالـ API مشفر ونشط بشكل صحيح.`,
+                                  samples: res.competitions ? res.competitions.slice(0, 3) : []
+                                });
+                                showToast('نجح اختبار جودة الاتصال بمزود البيانات الحقيقي!', 'success');
+                              } else {
+                                throw new Error(res?.message || 'الرد غير سليم');
+                              }
+                            } catch (err: any) {
+                              setDiagnosticsResult({
+                                status: 'failed',
+                                endpoint: '/competitions',
+                                message: `فشل الاتصال: ${err.message || 'Error 401 Unauthorized'}`
+                              });
+                              showToast('فشل التحقق من صحة الاتصال بالـ API المباشر', 'warning');
+                            }
+                          }}
+                          disabled={diagnosticsResult.status === 'testing'}
+                          className="w-full bg-white/5 border border-white/10 hover:bg-white/10 text-white font-bold py-3 px-2.5 rounded-xl flex items-center justify-center gap-2 transition-all text-xs cursor-pointer"
+                        >
+                          <ShieldCheck size={14} className={diagnosticsResult.status === 'testing' ? 'animate-spin' : ''} />
+                          <span>اختبار الاتصال بمزود البيانات</span>
+                        </button>
+                      </div>
+                    </div>
+
+                    {/* Diagnostics Details & Logs Console Card */}
+                    <div className="glass p-6 rounded-[2.5rem] border border-white/5 space-y-6 md:col-span-2 flex flex-col items-stretch">
+                      <div className="flex items-center justify-between border-b border-white/5 pb-4">
+                        <button
+                          onClick={() => {
+                            apiTracker.logs = [];
+                            setApiLogs([]);
+                            showToast('تم إفراغ مستودع سجلات المزامنة المؤقت بنجاح', 'success');
+                          }}
+                          className="text-red-400 hover:text-red-300 font-bold text-xs flex items-center gap-1 border border-red-500/10 hover:bg-red-500/5 px-2.5 py-1.5 rounded-lg transition-all"
+                        >
+                          <Trash2 size={12} />
+                          <span>تصفير السجلات</span>
+                        </button>
+
+                        <div className="flex items-center gap-3 text-right">
+                          <div>
+                            <h3 className="font-black text-white text-base">سجل الإجراءات المطور وخط سير الشبكة</h3>
+                            <p className="text-[10px] text-gray-400 font-bold">مراقبة حية للطلبات المنتهية واستكشاف الأخطاء</p>
+                          </div>
+                          <div className="w-10 h-10 rounded-2xl bg-indigo-500/10 text-indigo-400 flex items-center justify-center">
+                            <Terminal size={20} />
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Display test output or details if any */}
+                      {diagnosticsResult.status !== 'idle' && (
+                        <div className={cn(
+                          "p-4 rounded-2xl border text-xs space-y-2 text-right",
+                          diagnosticsResult.status === 'testing' ? "bg-yellow-500/5 border-yellow-500/20 text-yellow-300" :
+                          diagnosticsResult.status === 'success' ? "bg-green-500/5 border-green-500/20 text-green-300" :
+                          "bg-red-500/5 border-red-500/20 text-red-300"
+                        )}>
+                          <div className="flex gap-2 font-bold justify-between items-center" dir="rtl">
+                            <span className="font-black flex items-center gap-1.5">
+                              <span className="w-2 h-2 rounded-full bg-current" />
+                              <span>نتيجة اختبار مزود البيانات:</span>
+                            </span>
+                            <span className="font-mono bg-white/5 px-2 py-0.5 rounded text-[10px] uppercase text-gray-400">
+                              {diagnosticsResult.endpoint}
+                            </span>
+                          </div>
+                          <p className="font-semibold leading-relaxed">{diagnosticsResult.message}</p>
+                          {diagnosticsResult.samples && diagnosticsResult.samples.length > 0 && (
+                            <div className="pt-2 border-t border-white/5 text-[10px] text-gray-400 text-right">
+                              <span className="font-black block mb-1">عينات البيانات المقروءة:</span>
+                              <pre className="font-mono bg-black/40 p-2.5 rounded-lg max-h-[80px] overflow-y-auto text-left leading-normal" style={{ direction: 'ltr' }}>
+                                {JSON.stringify(diagnosticsResult.samples, null, 2)}
+                              </pre>
+                            </div>
+                          )}
+                        </div>
+                      )}
+
+                      {/* Terminal Tracker Logs */}
+                      <div className="flex-1 min-h-[220px] bg-slate-950/80 border border-white/5 rounded-2xl p-4 font-mono text-xs flex flex-col overflow-hidden relative" style={{ direction: 'ltr' }}>
+                        <div className="absolute top-3 right-4 flex gap-1.5 pointer-events-none">
+                          <span className="w-2.5 h-2.5 rounded-full bg-red-500/80" />
+                          <span className="w-2.5 h-2.5 rounded-full bg-yellow-500/80" />
+                          <span className="w-2.5 h-2.5 rounded-full bg-green-500/80" />
+                        </div>
+                        <span className="text-[10px] text-gray-500 font-bold mb-3 select-none">SYSTEM_NETWORK_TRACKER@CONSOLE:~$</span>
+                        
+                        <div className="flex-1 overflow-y-auto space-y-2 pr-1 font-mono text-[11px] leading-relaxed">
+                          {apiLogs.length === 0 ? (
+                            <p className="text-gray-650 italic select-none">لا توجد عمليات ربط تزامنية مؤخرة مسجلة في الوقت الراهن.</p>
+                          ) : (
+                            apiLogs.slice().reverse().map((log, index) => (
+                              <div key={index} className="space-y-1 pb-2 border-b border-white/5 text-left">
+                                <div className="flex items-center gap-2 justify-between">
+                                  <span className={cn(
+                                    "font-bold uppercase px-1.5 py-0.5 rounded text-[9px]",
+                                    log.status === 'success' ? "bg-green-500/15 text-green-400" : "bg-red-500/15 text-red-550"
+                                  )}>
+                                    {log.status === 'success' ? 'OK' : 'ERROR'}
+                                  </span>
+                                  <span className="text-blue-400 font-bold font-mono">{log.method} {log.endpoint}</span>
+                                  <span className="text-gray-500 text-[10px]">{new Date(log.timestamp).toLocaleTimeString()}</span>
+                                </div>
+                                {log.errors && (
+                                  <p className="text-red-400 pl-4 text-[10px] pr-2">Errors: {JSON.stringify(log.errors)}</p>
+                                )}
+                                {!log.errors && (
+                                  <p className="text-gray-400 pl-4 text-[10px] pr-2">Status: {log.statusText} • Size: {log.dataSize ? `${(log.dataSize / 1024).toFixed(1)} KB` : 'N/A'} {log.isCached ? '• (من الذاكرة المؤقتة)' : ''}</p>
+                                )}
+                              </div>
+                            ))
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </motion.div>
+              )}
             </AnimatePresence>
           </main>
         </div>
       </div>
+      {confirmModalData && confirmModalData.isOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-[#030712]/92 backdrop-blur-md select-none" style={{ direction: 'rtl' }}>
+          <motion.div 
+            initial={{ opacity: 0, scale: 0.95, y: 20 }}
+            animate={{ opacity: 1, scale: 1, y: 0 }}
+            exit={{ opacity: 0, scale: 0.95, y: 20 }}
+            className="w-full max-w-lg bg-[#0e1628] border border-red-500/20 p-8 rounded-[2.5rem] shadow-2xl relative overflow-hidden"
+          >
+            {/* Background design accents */}
+            <div className="absolute -top-12 -right-12 w-32 h-32 bg-red-500/10 rounded-full blur-3xl pointer-events-none" />
+            
+            <div className="space-y-6">
+              <div className="flex items-center gap-4 text-red-500">
+                <div className="w-12 h-12 rounded-2xl bg-red-500/10 flex items-center justify-center border border-red-500/20">
+                  <ShieldAlert size={24} className="animate-pulse" />
+                </div>
+                <div>
+                  <h3 className="text-xl font-black text-white">{confirmModalData.title}</h3>
+                  <p className="text-xs text-red-400 font-bold">إجراء حساس للغاية (حذف نهائي)</p>
+                </div>
+              </div>
+
+              <div className="p-4 bg-red-500/5 rounded-2xl border border-red-500/10 text-xs text-gray-400 font-medium leading-relaxed">
+                {confirmModalData.description}
+              </div>
+
+              {confirmModalData.confirmTextRequired && (
+                <div className="space-y-2">
+                  <label className="text-[10px] font-black uppercase text-gray-500 block">
+                    لتأكيد الحذف وتجنب الأخطاء، يرجى كتابة <span className="text-red-400 font-black">"{confirmModalData.confirmTextRequired}"</span> أدناه:
+                  </label>
+                  <input
+                    type="text"
+                    required
+                    placeholder={`اكتب "${confirmModalData.confirmTextRequired}" للمتابعة...`}
+                    value={typedConfirmText}
+                    onChange={(e) => setTypedConfirmText(e.target.value)}
+                    className="w-full bg-slate-950/60 border border-white/10 p-4 rounded-2xl font-black text-xs text-white placeholder-gray-600 focus:outline-none focus:border-red-500 focus:ring-1 focus:ring-red-500 transition-all text-center"
+                  />
+                </div>
+              )}
+
+              <div className="flex gap-4 pt-4 border-t border-white/5">
+                <button
+                  disabled={deleteInProgress}
+                  onClick={() => {
+                    setConfirmModalData(null);
+                    setTypedConfirmText('');
+                  }}
+                  className="flex-1 bg-white/5 hover:bg-white/10 text-gray-300 hover:text-white text-xs font-bold py-4 rounded-2xl transition-all border border-white/5 cursor-pointer"
+                >
+                  تراجع وإلغاء
+                </button>
+                <button
+                  disabled={deleteInProgress || (confirmModalData.confirmTextRequired && typedConfirmText !== confirmModalData.confirmTextRequired)}
+                  onClick={async () => {
+                    if (confirmModalData.onConfirm) {
+                      await confirmModalData.onConfirm();
+                    }
+                  }}
+                  className={`flex-1 flex items-center justify-center gap-2 text-white text-xs font-black py-4 rounded-2xl transition-all cursor-pointer ${
+                    deleteInProgress || (confirmModalData.confirmTextRequired && typedConfirmText !== confirmModalData.confirmTextRequired)
+                      ? 'bg-slate-800 text-gray-500 border border-white/5 cursor-not-allowed'
+                      : 'bg-red-600 hover:bg-red-700 hover:shadow-xl hover:shadow-red-600/15 border border-red-500/20'
+                  }`}
+                >
+                  {deleteInProgress && <RefreshCw size={12} className="animate-spin" />}
+                  <span>نعم، أحذف بشكل مؤكد</span>
+                </button>
+              </div>
+            </div>
+          </motion.div>
+        </div>
+      )}
     </div>
   );
 }

@@ -1,0 +1,51 @@
+name: iOS Mobile Build (IPA & TestFlight)
+
+on:
+  push:
+    branches: [ main, master ]
+  pull_request:
+    branches: [ main, master ]
+
+jobs:
+  build-ios:
+    runs-on: macos-latest
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js Environment
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: './mobile/package.json'
+
+      - name: Install Mobile Workspace Dependencies
+        run: |
+          cd mobile
+          npm install
+
+      - name: Set up CocoaPods Caching
+        uses: actions/cache@v3
+        with:
+          path: mobile/ios/Pods
+          key: ${{ runner.os }}-pods-${{ hashFiles('mobile/ios/Podfile.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-pods-
+
+      - name: Install Expo EAS Compiler Toolchain
+        run: npm install -g eas-cli
+
+      - name: Setup EAS Config Credentials
+        run: |
+          cd mobile
+          eas config:auth --token "${{ secrets.EXPO_TOKEN }}"
+
+      - name: Execute Cloud Build Profile: Apple iOS IPA
+        run: |
+          cd mobile
+          eas build --platform ios --profile production --non-interactive --no-wait
+
+      - name: Notify Build Completion
+        run: |
+          echo "iOS Build successfully submitted to Expo EAS cloud builders. Check your EAS pipeline online."

@@ -15,6 +15,7 @@ import {
   XCircle
 } from 'lucide-react';
 import { useAppStore } from '../../store/useAppStore';
+import NotificationCenter from '../NotificationCenter';
 
 interface MainLayoutProps {
   children: React.ReactNode;
@@ -69,14 +70,8 @@ export default function MainLayout({ children }: MainLayoutProps) {
               <Search className="w-5 h-5" />
             </button>
 
-            {/* Notification Simulation Bell */}
-            <button 
-              className="relative p-2.5 rounded-xl hover:bg-surface-hover hover:text-primary text-gray-400 transition-all duration-300 transform active:scale-95"
-              aria-label="تنبيهات"
-            >
-              <Bell className="w-5 h-5" />
-              <span className="absolute top-2 left-2 w-2 h-2 bg-primary rounded-full neon-glow"></span>
-            </button>
+            {/* Notification Dropdown / Sidebar Button */}
+            <NotificationCenter />
 
             {/* Premium Theme Mode Toggle with Flip animation */}
             <button 

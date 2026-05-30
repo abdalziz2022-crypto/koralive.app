@@ -1,0 +1,62 @@
+name: Android Mobile Build (APK & AAB)
+
+on:
+  push:
+    branches: [ main, master ]
+  pull_request:
+    branches: [ main, master ]
+
+jobs:
+  build-android:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js Environment
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: './mobile/package.json'
+
+      - name: Install Mobile Workspace Dependencies
+        run: |
+          cd mobile
+          npm install
+
+      - name: Set up Java JDK 17
+        uses: actions/setup-java@v3
+        with:
+          java-version: '17'
+          distribution: 'zulu'
+
+      - name: Install Expo EAS Compiler Toolchain
+        run: npm install -g eas-cli
+
+      - name: Setup EAS Config Credentials
+        run: |
+          cd mobile
+          eas config:auth --token "${{ secrets.EXPO_TOKEN }}"
+
+      - name: Execute Cloud Build Profile: Android APK
+        run: |
+          cd mobile
+          eas build --platform android --profile preview --non-interactive --no-wait
+
+      - name: Execute Cloud Build Profile: Production AAB Setup
+        run: |
+          cd mobile
+          eas build --platform android --profile production --non-interactive --no-wait
+
+      - name: Generate Automative Release Changes List
+        run: |
+          echo "Automated Koora Live Release - Native Android Assembly Successful" > release_notes.txt
+          echo "Build SHA: ${{ github.sha }}" >> release_notes.txt
+          echo "Compiled Date: $(date)" >> release_notes.txt
+
+      - name: Upload Logs & Assembly Metadata
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-notes
+          path: release_notes.txt

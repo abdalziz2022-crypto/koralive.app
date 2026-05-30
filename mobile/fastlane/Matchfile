@@ -1,0 +1,12 @@
+# Matchfile configures Fastlane Match to store encrypted certs in a private repository
+git_url("https://github.com/your-username/koralive-certificates.git")
+
+storage_mode("git")
+
+type("appstore") # The default type of certification to manage
+
+app_identifier(["com.koralive.app"])
+username("abdalziz2022@gmail.com") # Your Apple Developer ID email
+
+# Match encrypts all files with a passphrase before committing them to Git
+# ENV["MATCH_PASSWORD"] should be set in environment secrets

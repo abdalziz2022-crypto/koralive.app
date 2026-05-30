@@ -9,7 +9,8 @@ import {
   setPersistence, 
   browserLocalPersistence,
   createUserWithEmailAndPassword,
-  signInWithEmailAndPassword
+  signInWithEmailAndPassword,
+  sendPasswordResetEmail
 } from 'firebase/auth';
 import { getFirestore, doc, getDocFromServer, collection, addDoc, query, where, getDocs } from 'firebase/firestore';
 import { getMessaging, getToken, onMessage } from 'firebase/messaging';
@@ -31,6 +32,7 @@ export const facebookProvider = new FacebookAuthProvider();
 // وظائف البريد الإلكتروني
 export const registerWithEmail = (email: string, pass: string) => createUserWithEmailAndPassword(auth, email, pass);
 export const loginWithEmail = (email: string, pass: string) => signInWithEmailAndPassword(auth, email, pass);
+export const resetPasswordWithEmail = (email: string) => sendPasswordResetEmail(auth, email);
 
 // محاولة تسجيل الدخول عبر النافذة المنبثقة
 export const signInWithGoogle = async () => {
@@ -39,19 +41,27 @@ export const signInWithGoogle = async () => {
   } catch (error: any) {
     console.error("Google Auth Error:", error);
     if (window !== window.top) {
-      alert("عذراً! لا يمكن فتح نافذة تسجيل الدخول داخل شاشة المعاينة. يرجى فتح التطبيق في علامة تبويب جديدة (Open in new tab).");
-      throw error;
+      throw new Error("IFRAME_BLOCKED");
     }
     
-    // In Capacitor native apps, redirect will break the app and show "The requested action is invalid."
     const isCapacitor = typeof window !== 'undefined' && (window as any).Capacitor?.isNativePlatform?.();
     if (isCapacitor) {
-      alert("عذراً، تسجيل الدخول بجوجل غير مدعوم في التطبيق حالياً. يرجى استخدام البريد الإلكتروني.");
-      throw error;
+      throw new Error("CAPACITOR_BLOCKED");
     }
 
-    console.warn("Popup blocked or failed, trying redirect...");
-    return await signInWithRedirect(auth, googleProvider);
+    // Check if the error is popup-blocked or popup-closed-by-user
+    if (error.code === 'auth/popup-blocked' || error.code === 'auth/cancelled-popup-request' || error.code === 'auth/popup-closed-by-user') {
+      throw error; // Let UI handle it with a friendly fallback recommendation
+    }
+
+    // Try redirect ONLY as a clean fallback if not blocked
+    try {
+      console.warn("Popup failed, trying redirect...");
+      return await signInWithRedirect(auth, googleProvider);
+    } catch (redirectError) {
+      console.error("Redirect Auth Error:", redirectError);
+      throw redirectError;
+    }
   }
 };
 
@@ -61,18 +71,25 @@ export const signInWithFacebook = async () => {
   } catch (error: any) {
     console.error("Facebook Auth Error:", error);
     if (window !== window.top) {
-      alert("عذراً! لا يمكن فتح نافذة تسجيل الدخول داخل شاشة المعاينة. يرجى فتح التطبيق في علامة تبويب جديدة (Open in new tab).");
-      throw error;
+      throw new Error("IFRAME_BLOCKED");
     }
 
     const isCapacitor = typeof window !== 'undefined' && (window as any).Capacitor?.isNativePlatform?.();
     if (isCapacitor) {
-      alert("عذراً، تسجيل الدخول بفيسبوك غير مدعوم في التطبيق حالياً. يرجى استخدام البريد الإلكتروني.");
+      throw new Error("CAPACITOR_BLOCKED");
+    }
+
+    if (error.code === 'auth/popup-blocked' || error.code === 'auth/cancelled-popup-request' || error.code === 'auth/popup-closed-by-user') {
       throw error;
     }
 
-    console.warn("Facebook Popup blocked or failed, trying redirect...");
-    return await signInWithRedirect(auth, facebookProvider);
+    try {
+      console.warn("Facebook Popup failed, trying redirect...");
+      return await signInWithRedirect(auth, facebookProvider);
+    } catch (redirectError) {
+      console.error("Facebook Redirect Auth Error:", redirectError);
+      throw redirectError;
+    }
   }
 };
 

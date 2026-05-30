@@ -16,6 +16,7 @@ import { MatchProvider } from './context/MatchContext';
 import { SettingsProvider } from './context/SettingsContext';
 import { ErrorProvider } from './context/ErrorContext';
 import { ThemeProvider } from './context/ThemeContext';
+import { NotificationProvider } from './context/NotificationContext';
 import GoalNotifier from './components/GoalNotifier';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 
@@ -62,29 +63,31 @@ export default function App() {
         <ErrorProvider>
           <SettingsProvider>
             <MatchProvider>
-              <GoalNotifier />
-              <Router>
-                <ScrollToHash />
-                <MainLayout>
-                  <SplashScreen />
-                  <Routes>
-                    <Route path="/" element={<HomePage />} />
-                    <Route path="/league/:id" element={<LeaguePage />} />
-                    <Route path="/team/:id" element={<TeamPage />} />
-                    <Route path="/player/:id" element={<PlayerPage />} />
-                    <Route path="/match/:id" element={<MatchDetailsPage />} />
-                    <Route path="/schedule" element={<Schedule />} />
-                    <Route path="/leagues" element={<LeaguesPage />} />
-                    <Route path="/admin" element={<AdminPanel />} />
-                    <Route path="/profile" element={<Profile />} />
-                    <Route path="/test-match" element={<MatchTestPage />} />
-                    <Route path="/apifootball-test" element={<ApiFootballTestPage />} />
-                    <Route path="/news" element={<NewsAggregatorPage />} />
-                    <Route path="/brand" element={<BrandSystemPage />} />
-                    <Route path="/football-debug" element={<FootballDebugScreen />} />
-                  </Routes>
-                </MainLayout>
-              </Router>
+              <NotificationProvider>
+                <GoalNotifier />
+                <Router>
+                  <ScrollToHash />
+                  <MainLayout>
+                    <SplashScreen />
+                    <Routes>
+                      <Route path="/" element={<HomePage />} />
+                      <Route path="/league/:id" element={<LeaguePage />} />
+                      <Route path="/team/:id" element={<TeamPage />} />
+                      <Route path="/player/:id" element={<PlayerPage />} />
+                      <Route path="/match/:id" element={<MatchDetailsPage />} />
+                      <Route path="/schedule" element={<Schedule />} />
+                      <Route path="/leagues" element={<LeaguesPage />} />
+                      <Route path="/admin" element={<AdminPanel />} />
+                      <Route path="/profile" element={<Profile />} />
+                      <Route path="/test-match" element={<MatchTestPage />} />
+                      <Route path="/apifootball-test" element={<ApiFootballTestPage />} />
+                      <Route path="/news" element={<NewsAggregatorPage />} />
+                      <Route path="/brand" element={<BrandSystemPage />} />
+                      <Route path="/football-debug" element={<FootballDebugScreen />} />
+                    </Routes>
+                  </MainLayout>
+                </Router>
+              </NotificationProvider>
             </MatchProvider>
           </SettingsProvider>
         </ErrorProvider>

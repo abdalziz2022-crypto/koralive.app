@@ -150,6 +150,36 @@ const PORT = 3000;
 
 app.use(express.json());
 
+// Serve Firebase Messaging Service Worker directly with correct headers to avoid redirects/content-type issues
+app.get("/firebase-messaging-sw.js", (req, res) => {
+  const isProd = process.env.NODE_ENV === "production";
+  const filePath = isProd 
+    ? path.join(process.cwd(), "dist", "firebase-messaging-sw.js")
+    : path.join(process.cwd(), "public", "firebase-messaging-sw.js");
+  
+  res.sendFile(filePath, {
+    headers: {
+      "Content-Type": "application/javascript",
+      "Service-Worker-Allowed": "/"
+    }
+  }, (err) => {
+    if (err) {
+      // Backup fallback to public directory
+      const backupPath = path.join(process.cwd(), "public", "firebase-messaging-sw.js");
+      res.sendFile(backupPath, {
+        headers: {
+          "Content-Type": "application/javascript",
+          "Service-Worker-Allowed": "/"
+        }
+      }, (backupErr) => {
+        if (backupErr) {
+          res.status(404).end();
+        }
+      });
+    }
+  });
+});
+
 // Mount dynamic multi-source RSS Feed news router
 app.use('/api', setupRssRouter(firestore));
 

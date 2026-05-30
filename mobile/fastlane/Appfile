@@ -1,0 +1,9 @@
+# Appfile configures the identifiers and account references for Fastlane
+app_identifier("com.koralive.app") # Your Apple & Android bundle identifier
+apple_id("abdalziz2022@gmail.com") # Your App Store Connect Apple ID
+itc_team_id("123456789")         # iTunes Connect Team ID
+team_id("XXXXXXXXXX")            # Apple Developer Portal Team ID
+
+# You can also set a custom Google Play JSON developer credentials path here:
+json_key_file("./fastlane/play-store-credentials.json")
+package_name("com.koralive.app")
