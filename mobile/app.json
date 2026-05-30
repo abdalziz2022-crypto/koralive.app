@@ -13,7 +13,7 @@
     },
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.koralive.app",
+      "bundleIdentifier": "com.kora90.kora90",
       "infoPlist": {
         "UIBackgroundModes": ["remote-notification"]
       }
